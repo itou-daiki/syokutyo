@@ -155,21 +155,53 @@ function getData(dateStr) {
       throw new Error(ERROR_MESSAGES.INVALID_DATE);
     }
 
+    // 本日のデータを取得
+    const todayData = getDataForDate(dateStr);
+
+    // 明日の日付を計算
+    const tomorrow = new Date(dateStr);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = formatDate(tomorrow);
+
+    // 明日のデータを取得
+    const tomorrowData = getDataForDate(tomorrowStr);
+
     const result = {
       staff: getStaffData(),
-      daily: [],
-      trips: [],
-      leaves: [],
-      meetings: [],
-      announcements_staff: [],
-      announcements_student: [],
-      reservations: [],
-      counts: { trip: 0, leave: 0, meeting: 0 }
+      today: todayData,
+      tomorrow: tomorrowData
     };
 
-    const targetDate = new Date(dateStr);
-    const dayMap = ['日', '月', '火', '水', '木', '金', '土'];
-    const dayOfWeek = dayMap[targetDate.getDay()];
+    logInfo('getData', `Data fetched successfully. Today events: ${todayData.daily.length}, Tomorrow events: ${tomorrowData.daily.length}`);
+    return JSON.stringify(result);
+
+  } catch (e) {
+    logError('getData', e);
+    throw new Error(`データ取得エラー: ${e.message}`);
+  }
+}
+
+/**
+ * 指定日のデータを取得（内部関数）
+ * @param {string} dateStr - 日付文字列（yyyy-MM-dd形式）
+ * @returns {Object} その日のデータ
+ */
+function getDataForDate(dateStr) {
+  const result = {
+    date: dateStr,
+    daily: [],
+    trips: [],
+    leaves: [],
+    meetings: [],
+    announcements_staff: [],
+    announcements_student: [],
+    reservations: [],
+    counts: { trip: 0, leave: 0, meeting: 0 }
+  };
+
+  const targetDate = new Date(dateStr);
+  const dayMap = ['日', '月', '火', '水', '木', '金', '土'];
+  const dayOfWeek = dayMap[targetDate.getDay()];
 
     // 1. 行事 (複数登録対応)
     result.daily = getRows(SHEETS.DAILY)
@@ -273,13 +305,7 @@ function getData(dateStr) {
       }));
     result.reservations = [...fr, ...nr];
 
-    logInfo('getData', `Data fetched successfully. Daily events: ${result.daily.length}, Trips: ${result.trips.length}`);
-    return JSON.stringify(result);
-
-  } catch (e) {
-    logError('getData', e);
-    throw new Error(`データ取得エラー: ${e.message}`);
-  }
+    return result;
 }
 
 // =============================================================================

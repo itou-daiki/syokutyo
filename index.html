@@ -51,35 +51,127 @@
   <!-- Main Container -->
   <div class="container-fluid">
 
-    <!-- Daily Events Section -->
-    <div class="card border-primary">
-      <div class="card-header">
-        <div class="d-flex align-items-center gap-2">
-          <i class="bi bi-calendar-check-fill text-primary fs-5"></i>
-          <h5 class="mb-0">本日の行事</h5>
-        </div>
-        <div class="d-flex gap-2">
-          <button class="btn btn-sm btn-outline-secondary" onclick="copyDailyInfo()" title="コピー">
-            <i class="bi bi-clipboard"></i>
-          </button>
-          <button class="btn btn-sm btn-primary" onclick="openModal('daily')">
-            <i class="bi bi-plus-lg me-1"></i>追加
-          </button>
+    <!-- Daily Events Section - Today & Tomorrow -->
+    <div class="row g-3 mb-3">
+      <!-- Today's Events -->
+      <div class="col-lg-6">
+        <div class="card border-primary h-100">
+          <div class="card-header">
+            <div class="d-flex align-items-center gap-2">
+              <i class="bi bi-calendar-check-fill text-primary fs-5"></i>
+              <h5 class="mb-0">本日の行事</h5>
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn btn-sm btn-outline-secondary" onclick="copyDailyInfo('today')" title="コピー">
+                <i class="bi bi-clipboard"></i>
+              </button>
+              <button class="btn btn-sm btn-primary" onclick="openModal('daily')">
+                <i class="bi bi-plus-lg me-1"></i>追加
+              </button>
+            </div>
+          </div>
+          <div class="card-body p-0">
+            <!-- Date Display -->
+            <div class="display-date-section">
+              <h4 id="displayDate" class="mb-0"></h4>
+              <span class="badge bg-light text-dark" id="dailyCount" style="font-size: 0.875rem;">0件</span>
+            </div>
+            <!-- Events List -->
+            <ul class="list-group list-group-flush" id="dailyList">
+              <li class="list-group-item text-muted text-center py-5">
+                <i class="bi bi-calendar3 fs-1 d-block mb-2 opacity-25"></i>
+                予定はありません
+              </li>
+            </ul>
+          </div>
         </div>
       </div>
-      <div class="card-body p-0">
-        <!-- Date Display -->
-        <div class="display-date-section">
-          <h4 id="displayDate" class="mb-0"></h4>
-          <span class="badge bg-light text-dark" id="dailyCount" style="font-size: 0.875rem;">0件</span>
+
+      <!-- Tomorrow's Events -->
+      <div class="col-lg-6">
+        <div class="card h-100" style="border-left: 4px solid var(--color-accent-light) !important;">
+          <div class="card-header">
+            <div class="d-flex align-items-center gap-2">
+              <i class="bi bi-calendar-plus fs-5" style="color: var(--color-accent-light);"></i>
+              <h5 class="mb-0" style="color: var(--color-accent-light);">明日の行事</h5>
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn btn-sm btn-outline-secondary" onclick="copyDailyInfo('tomorrow')" title="コピー">
+                <i class="bi bi-clipboard"></i>
+              </button>
+            </div>
+          </div>
+          <div class="card-body p-0">
+            <!-- Date Display -->
+            <div class="display-date-section" style="background: var(--color-accent-light);">
+              <h4 id="displayDateTomorrow" class="mb-0"></h4>
+              <span class="badge bg-light text-dark" id="dailyCountTomorrow" style="font-size: 0.875rem;">0件</span>
+            </div>
+            <!-- Events List -->
+            <ul class="list-group list-group-flush" id="dailyListTomorrow">
+              <li class="list-group-item text-muted text-center py-5">
+                <i class="bi bi-calendar3 fs-1 d-block mb-2 opacity-25"></i>
+                予定はありません
+              </li>
+            </ul>
+          </div>
         </div>
-        <!-- Events List -->
-        <ul class="list-group list-group-flush" id="dailyList">
-          <li class="list-group-item text-muted text-center py-5">
-            <i class="bi bi-calendar3 fs-1 d-block mb-2 opacity-25"></i>
-            予定はありません
-          </li>
-        </ul>
+      </div>
+    </div>
+
+    <!-- Weather & Meeting Section -->
+    <div class="row g-3 mb-3">
+      <!-- Weather Forecast -->
+      <div class="col-lg-6">
+        <div class="card h-100" style="border-left: 4px solid #F39C12 !important;">
+          <div class="card-header">
+            <div class="d-flex align-items-center gap-2">
+              <i class="bi bi-cloud-sun-fill fs-5" style="color: #F39C12;"></i>
+              <h6 class="mb-0">天気予報（日田市）</h6>
+            </div>
+          </div>
+          <div class="card-body">
+            <div id="weatherInfo" class="text-center py-3">
+              <div class="spinner-border text-warning" role="status">
+                <span class="visually-hidden">読み込み中...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Today's Meetings -->
+      <div class="col-lg-6">
+        <div class="card h-100" style="border-left: 4px solid var(--color-primary) !important;">
+          <div class="card-header">
+            <div class="d-flex align-items-center gap-2">
+              <i class="bi bi-people-fill fs-5" style="color: var(--color-primary);"></i>
+              <h6 class="mb-0">本日の会議</h6>
+              <span id="badgeMeetingMain" class="badge ms-auto" style="background: var(--color-primary); color: white;">0</span>
+            </div>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-sm table-hover mb-0">
+                <thead style="background: var(--color-gray-50);">
+                  <tr>
+                    <th style="font-size: 0.8125rem;">会議名</th>
+                    <th style="font-size: 0.8125rem;">時間</th>
+                    <th style="font-size: 0.8125rem;">場所</th>
+                  </tr>
+                </thead>
+                <tbody id="meetingListMain">
+                  <tr>
+                    <td colspan="3" class="text-center text-muted py-3">
+                      <i class="bi bi-people opacity-25 fs-4 d-block mb-1"></i>
+                      <small>予定なし</small>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 

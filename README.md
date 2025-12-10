@@ -56,16 +56,20 @@
 
 ```
 syokutyo/
-├── Code.js           # バックエンドロジック（Google Apps Script）
-├── Config.js         # システム設定
-├── index.html        # メインHTMLテンプレート
-├── js.html           # JavaScriptコード
-├── css.html          # スタイルシート
-├── メモ.js           # データ構造のドキュメント
-├── appsscript.json   # Apps Script設定
-├── .clasp.json       # Clasp設定
-└── README.md         # このファイル
+├── Code.js             # バックエンドロジック（Google Apps Script）
+├── Config.js           # システム設定（.gitignoreに含まれる）⚠️
+├── Config.example.js   # 設定ファイルのサンプル
+├── index.html          # メインHTMLテンプレート
+├── js.html             # JavaScriptコード
+├── css.html            # スタイルシート
+├── メモ.js             # データ構造のドキュメント
+├── appsscript.json     # Apps Script設定
+├── .clasp.json         # Clasp設定
+├── .gitignore          # Git無視ファイル設定
+└── README.md           # このファイル
 ```
+
+**⚠️ 重要:** `Config.js` は機密情報を含むため、Gitにコミットされません。
 
 ## セットアップ
 
@@ -91,9 +95,22 @@ syokutyo/
 
 ### 3. 設定
 
-1. `Config.js` を開く
-2. `SPREADSHEET_ID` をあなたのスプレッドシートのIDに変更
+**重要: Config.jsのセットアップ**
+
+1. `Config.example.js` をコピーして `Config.js` を作成
+   ```bash
+   cp Config.example.js Config.js
+   ```
+
+2. `Config.js` を開く
+
+3. `SPREADSHEET_ID` をあなたのスプレッドシートのIDに変更
    - スプレッドシートのURL: `https://docs.google.com/spreadsheets/d/【ここがID】/edit`
+
+**注意事項:**
+- ⚠️ `Config.js` は `.gitignore` に含まれており、Gitにコミットされません
+- ⚠️ 機密情報が含まれるため、このファイルを公開しないでください
+- ⚠️ チーム開発の場合、各自が `Config.example.js` から自分の `Config.js` を作成してください
 
 ### 4. デプロイ
 

@@ -20,7 +20,10 @@ const CONFIG = {
   ROOMS: ['選択1', '選択2', '選択3', '選択4', 'PC室', '会議室', '視聴覚室'],
   PERIODS: ['1限', '2限', '3限', '4限', '昼', '5限', '6限', '放課後'],
   DAYS_OF_WEEK: ['日', '月', '火', '水', '木', '金', '土'],
-  TOAST_DURATION: 3000
+  TOAST_DURATION: 3000,
+  // 日田市の座標
+  HITA_LAT: 33.3219,
+  HITA_LON: 130.9414
 };
 
 const MESSAGE = {
@@ -225,30 +228,48 @@ function onDataLoaded(json) {
     staffList = data.staff;
 
     console.log('Data loaded successfully:', {
-      daily: data.daily.length,
-      trips: data.trips.length,
-      leaves: data.leaves.length,
-      meetings: data.meetings.length
+      today_daily: data.today.daily.length,
+      tomorrow_daily: data.tomorrow.daily.length,
+      trips: data.today.trips.length,
+      leaves: data.today.leaves.length,
+      meetings: data.today.meetings.length
     });
 
-    // 日付表示を更新
+    // 本日の日付表示を更新
     const dateStr = document.getElementById('datePicker').value;
     const dayOfWeek = CONFIG.DAYS_OF_WEEK[currentDate.getDay()];
     document.getElementById('displayDate').textContent = `${dateStr} (${dayOfWeek})`;
 
-    // 各セクションをレンダリング
-    renderDailyList(data.daily);
-    renderTripList(data.trips);
-    renderLeaveList(data.leaves);
-    renderMeetings(data.meetings);
-    renderAnnouncements('announceStaffList', data.announcements_staff, 'announce');
-    renderAnnouncements('announceStudentList', data.announcements_student, 'announce');
-    renderRoomMatrix(data.reservations);
+    // 明日の日付表示を更新
+    const tomorrow = new Date(currentDate);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowDayOfWeek = CONFIG.DAYS_OF_WEEK[tomorrow.getDay()];
+    const tomorrowStr = formatDateString(tomorrow);
+    document.getElementById('displayDateTomorrow').textContent = `${tomorrowStr} (${tomorrowDayOfWeek})`;
+
+    // 各セクションをレンダリング（本日）
+    renderDailyList(data.today.daily, 'dailyList', 'dailyCount');
+    renderTripList(data.today.trips);
+    renderLeaveList(data.today.leaves);
+    renderMeetings(data.today.meetings);
+    renderAnnouncements('announceStaffList', data.today.announcements_staff, 'announce');
+    renderAnnouncements('announceStudentList', data.today.announcements_student, 'announce');
+    renderRoomMatrix(data.today.reservations);
+
+    // 明日の行事をレンダリング
+    renderDailyList(data.tomorrow.daily, 'dailyListTomorrow', 'dailyCountTomorrow');
+
+    // 会議情報をメインセクションにも表示
+    renderMeetings(data.today.meetings, 'meetingListMain');
+    document.getElementById('badgeMeetingMain').textContent = data.today.counts.meeting;
 
     // カウント表示を更新
-    document.getElementById('badgeTrip').textContent = data.counts.trip;
-    document.getElementById('badgeLeave').textContent = data.counts.leave;
-    document.getElementById('badgeMeeting').textContent = data.counts.meeting;
+    document.getElementById('badgeTrip').textContent = data.today.counts.trip;
+    document.getElementById('badgeLeave').textContent = data.today.counts.leave;
+    document.getElementById('badgeMeeting').textContent = data.today.counts.meeting;
+
+    // 天気予報を取得
+    loadWeather();
 
     showLoading(false);
   } catch (e) {
@@ -256,6 +277,18 @@ function onDataLoaded(json) {
     showErrorToast(MESSAGE.LOAD_ERROR);
     showLoading(false);
   }
+}
+
+/**
+ * Date オブジェクトを yyyy-MM-dd 形式の文字列に変換
+ * @param {Date} date - 日付オブジェクト
+ * @returns {string} yyyy-MM-dd形式の日付文字列
+ */
+function formatDateString(date) {
+  const y = date.getFullYear();
+  const m = ('0' + (date.getMonth() + 1)).slice(-2);
+  const d = ('0' + date.getDate()).slice(-2);
+  return `${y}-${m}-${d}`;
 }
 
 /**
@@ -269,18 +302,139 @@ function onFailure(error) {
 }
 
 // =============================================================================
+// 天気予報
+// =============================================================================
+
+/**
+ * 天気予報を読み込む（Open-Meteo API使用）
+ */
+function loadWeather() {
+  const weatherEl = document.getElementById('weatherInfo');
+
+  fetch(`https://api.open-meteo.com/v1/forecast?latitude=${CONFIG.HITA_LAT}&longitude=${CONFIG.HITA_LON}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=Asia/Tokyo&forecast_days=2`)
+    .then(response => response.json())
+    .then(data => {
+      console.log('Weather data loaded:', data);
+      renderWeather(data);
+    })
+    .catch(error => {
+      console.error('Weather API error:', error);
+      weatherEl.innerHTML = `
+        <div class="text-muted">
+          <i class="bi bi-exclamation-triangle fs-3 d-block mb-2"></i>
+          <small>天気情報の取得に失敗しました</small>
+        </div>
+      `;
+    });
+}
+
+/**
+ * 天気予報を表示
+ * @param {Object} data - Open-Meteo APIからのデータ
+ */
+function renderWeather(data) {
+  const weatherEl = document.getElementById('weatherInfo');
+
+  if (!data || !data.current || !data.daily) {
+    weatherEl.innerHTML = '<div class="text-muted"><small>天気情報がありません</small></div>';
+    return;
+  }
+
+  const current = data.current;
+  const today = data.daily;
+
+  // 天気アイコンを取得
+  const weatherIcon = getWeatherIcon(current.weather_code);
+  const todayIcon = getWeatherIcon(today.weather_code[0]);
+  const tomorrowIcon = getWeatherIcon(today.weather_code[1]);
+
+  weatherEl.innerHTML = `
+    <div class="row g-3">
+      <!-- 現在の天気 -->
+      <div class="col-md-12">
+        <div class="d-flex align-items-center justify-content-center gap-3 py-2">
+          <i class="bi ${weatherIcon}" style="font-size: 3rem; color: #F39C12;"></i>
+          <div>
+            <div style="font-size: 2.5rem; font-weight: 700;">${Math.round(current.temperature_2m)}°C</div>
+            <div class="text-muted"><small>現在</small></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 本日と明日の予報 -->
+      <div class="col-md-6">
+        <div class="text-center p-2 rounded" style="background: var(--color-gray-50);">
+          <div class="text-muted mb-1"><small>本日</small></div>
+          <i class="bi ${todayIcon} fs-3 d-block mb-1" style="color: #F39C12;"></i>
+          <div class="fw-bold">${Math.round(today.temperature_2m_max[0])}° / ${Math.round(today.temperature_2m_min[0])}°</div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="text-center p-2 rounded" style="background: var(--color-gray-50);">
+          <div class="text-muted mb-1"><small>明日</small></div>
+          <i class="bi ${tomorrowIcon} fs-3 d-block mb-1" style="color: #5DADE2;"></i>
+          <div class="fw-bold">${Math.round(today.temperature_2m_max[1])}° / ${Math.round(today.temperature_2m_min[1])}°</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * WMO Weather Codeから天気アイコンを取得
+ * @param {number} code - WMO天気コード
+ * @returns {string} Bootstrap Iconのクラス名
+ */
+function getWeatherIcon(code) {
+  const iconMap = {
+    0: 'bi-sun-fill',           // 快晴
+    1: 'bi-sun',                // 晴れ
+    2: 'bi-cloud-sun',          // 一部曇り
+    3: 'bi-cloud',              // 曇り
+    45: 'bi-cloud-fog',         // 霧
+    48: 'bi-cloud-fog',         // 霧
+    51: 'bi-cloud-drizzle',     // 小雨
+    53: 'bi-cloud-drizzle',     // 小雨
+    55: 'bi-cloud-drizzle',     // 小雨
+    61: 'bi-cloud-rain',        // 雨
+    63: 'bi-cloud-rain',        // 雨
+    65: 'bi-cloud-rain-heavy',  // 大雨
+    71: 'bi-cloud-snow',        // 雪
+    73: 'bi-cloud-snow',        // 雪
+    75: 'bi-cloud-snow',        // 大雪
+    77: 'bi-cloud-snow',        // みぞれ
+    80: 'bi-cloud-rain',        // にわか雨
+    81: 'bi-cloud-rain',        // にわか雨
+    82: 'bi-cloud-rain-heavy',  // 激しいにわか雨
+    85: 'bi-cloud-snow',        // にわか雪
+    86: 'bi-cloud-snow',        // にわか雪
+    95: 'bi-cloud-lightning',   // 雷雨
+    96: 'bi-cloud-lightning-rain', // 雷雨
+    99: 'bi-cloud-lightning-rain'  // 雷雨
+  };
+
+  return iconMap[code] || 'bi-cloud-sun';
+}
+
+// =============================================================================
 // レンダリング関数
 // =============================================================================
 
 /**
  * 行事リストをレンダリング
  * @param {Array} items - 行事データの配列
+ * @param {string} listId - リスト要素のID
+ * @param {string} countId - カウント表示要素のID
  */
-function renderDailyList(items) {
+function renderDailyList(items, listId = 'dailyList', countId = 'dailyCount') {
   try {
-    const list = document.getElementById('dailyList');
+    const list = document.getElementById(listId);
+    const countEl = document.getElementById(countId);
+
     list.innerHTML = '';
-    document.getElementById('dailyCount').textContent = items.length + '件';
+    if (countEl) {
+      countEl.textContent = items.length + '件';
+    }
 
     if (!items || items.length === 0) {
       list.innerHTML = `
@@ -295,10 +449,18 @@ function renderDailyList(items) {
     // 時刻でソート
     items.sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
 
+    const showDeleteButton = listId === 'dailyList'; // 本日の行事のみ削除ボタンを表示
+
     items.forEach((d, index) => {
       const timeHtml = d.time ? `<span class="badge bg-primary me-2">${escapeHtml(d.time)}</span>` : '';
       const noteHtml = d.note ? `<br><small class="text-muted"><i class="bi bi-info-circle me-1"></i>${escapeHtml(d.note)}</small>` : '';
       const contentSafe = escapeHtml(d.content);
+
+      const deleteButton = showDeleteButton ? `
+        <button class="btn btn-sm text-danger opacity-50 btn-icon" onclick="deleteItem('${d.id}', 'daily', '${contentSafe}')" title="削除">
+          <i class="bi bi-trash"></i>
+        </button>
+      ` : '';
 
       list.innerHTML += `
         <li class="list-group-item d-flex justify-content-between align-items-start" style="animation: fadeInUp ${0.3 + index * 0.1}s ease-out;">
@@ -306,9 +468,7 @@ function renderDailyList(items) {
             <div class="fw-bold fs-5">${timeHtml}${contentSafe}</div>
             ${noteHtml}
           </div>
-          <button class="btn btn-sm text-danger opacity-50 btn-icon" onclick="deleteItem('${d.id}', 'daily', '${contentSafe}')" title="削除">
-            <i class="bi bi-trash"></i>
-          </button>
+          ${deleteButton}
         </li>
       `;
     });
@@ -442,10 +602,11 @@ function renderAnnouncements(id, items, cat) {
 /**
  * 会議リストをレンダリング
  * @param {Array} items - 会議データの配列
+ * @param {string} listId - リスト要素のID
  */
-function renderMeetings(items) {
+function renderMeetings(items, listId = 'meetingList') {
   try {
-    const el = document.getElementById('meetingList');
+    const el = document.getElementById(listId);
     el.innerHTML = items.length ? '' : `
       <tr>
         <td colspan="3" class="text-center text-muted py-3">
@@ -715,11 +876,19 @@ function deleteOverride(id, content) {
 
 /**
  * 行事情報をクリップボードにコピー
+ * @param {string} target - 'today' または 'tomorrow'
  */
-function copyDailyInfo() {
+function copyDailyInfo(target = 'today') {
   try {
-    let text = `【${document.getElementById('displayDate').innerText}】\n`;
-    const items = currentData.daily || [];
+    let text, items;
+
+    if (target === 'today') {
+      text = `【${document.getElementById('displayDate').innerText}】\n`;
+      items = currentData.today?.daily || [];
+    } else {
+      text = `【${document.getElementById('displayDateTomorrow').innerText}】\n`;
+      items = currentData.tomorrow?.daily || [];
+    }
 
     if (items.length === 0) {
       text += "予定なし";
