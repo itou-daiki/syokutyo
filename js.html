@@ -283,30 +283,54 @@ function renderDailyList(items) {
     document.getElementById('dailyCount').textContent = items.length + '件';
 
     if (!items || items.length === 0) {
-      list.innerHTML = '<li class="list-group-item text-muted text-center py-4">予定はありません</li>';
+      list.innerHTML = `
+        <li class="list-group-item text-muted text-center py-5">
+          <i class="bi bi-calendar3 fs-1 d-block mb-2 opacity-25"></i>
+          予定はありません
+        </li>
+      `;
       return;
     }
 
     // 時刻でソート
     items.sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
 
-    items.forEach(d => {
+    items.forEach((d, index) => {
       const timeHtml = d.time ? `<span class="badge bg-primary me-2">${escapeHtml(d.time)}</span>` : '';
       const noteHtml = d.note ? `<br><small class="text-muted"><i class="bi bi-info-circle me-1"></i>${escapeHtml(d.note)}</small>` : '';
       const contentSafe = escapeHtml(d.content);
 
       list.innerHTML += `
-        <li class="list-group-item d-flex justify-content-between align-items-start">
+        <li class="list-group-item d-flex justify-content-between align-items-start" style="animation: fadeInUp ${0.3 + index * 0.1}s ease-out;">
           <div class="me-auto">
             <div class="fw-bold fs-5">${timeHtml}${contentSafe}</div>
             ${noteHtml}
           </div>
-          <button class="btn btn-sm text-danger opacity-50" onclick="deleteItem('${d.id}', 'daily', '${contentSafe}')" title="削除">
+          <button class="btn btn-sm text-danger opacity-50 btn-icon" onclick="deleteItem('${d.id}', 'daily', '${contentSafe}')" title="削除">
             <i class="bi bi-trash"></i>
           </button>
         </li>
       `;
     });
+
+    // アニメーション用のスタイルを追加（一度だけ）
+    if (!document.getElementById('fadeInUpStyle')) {
+      const style = document.createElement('style');
+      style.id = 'fadeInUpStyle';
+      style.textContent = `
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `;
+      document.head.appendChild(style);
+    }
   } catch (e) {
     console.error('renderDailyList error:', e);
   }
@@ -318,16 +342,26 @@ function renderDailyList(items) {
  */
 function renderTripList(items) {
   const list = document.getElementById('tripList');
-  list.innerHTML = items.length ? '' : '<li class="list-group-item text-muted small py-2">予定なし</li>';
+  list.innerHTML = items.length ? '' : `
+    <li class="list-group-item text-muted text-center py-3">
+      <i class="bi bi-briefcase opacity-25 fs-4 d-block mb-1"></i>
+      <small>予定なし</small>
+    </li>
+  `;
 
   items.forEach(t => {
     list.innerHTML += `
       <li class="list-group-item">
-        <div class="d-flex justify-content-between">
+        <div class="d-flex justify-content-between align-items-center mb-1">
           <strong>${escapeHtml(t.staff_name)}</strong>
-          <span class="badge bg-success rounded-pill align-self-center">${escapeHtml(t.time)}</span>
+          <span class="badge bg-success rounded-pill">${escapeHtml(t.time)}</span>
         </div>
-        <div class="small text-muted text-truncate">${escapeHtml(t.location)} / ${escapeHtml(t.purpose)}</div>
+        <div class="small text-muted">
+          <i class="bi bi-geo-alt me-1"></i>${escapeHtml(t.location)}
+        </div>
+        <div class="small text-muted">
+          <i class="bi bi-briefcase me-1"></i>${escapeHtml(t.purpose)}
+        </div>
       </li>
     `;
   });
@@ -339,17 +373,24 @@ function renderTripList(items) {
  */
 function renderLeaveList(items) {
   const list = document.getElementById('leaveList');
-  list.innerHTML = items.length ? '' : '<li class="list-group-item text-muted small py-2">予定なし</li>';
+  list.innerHTML = items.length ? '' : `
+    <li class="list-group-item text-muted text-center py-3">
+      <i class="bi bi-house-door opacity-25 fs-4 d-block mb-1"></i>
+      <small>予定なし</small>
+    </li>
+  `;
 
   items.forEach(l => {
     const badgeClass = l.type === '年休' ? 'bg-primary' : l.type === '夏季休暇' ? 'bg-info text-dark' : 'bg-secondary';
     list.innerHTML += `
       <li class="list-group-item">
-        <div class="d-flex justify-content-between">
+        <div class="d-flex justify-content-between align-items-center mb-1">
           <strong>${escapeHtml(l.staff_name)}</strong>
-          <span class="badge ${badgeClass} rounded-pill align-self-center">${escapeHtml(l.type)}</span>
+          <span class="badge ${badgeClass} rounded-pill">${escapeHtml(l.type)}</span>
         </div>
-        <div class="small text-muted">${escapeHtml(l.time)}</div>
+        <div class="small text-muted">
+          <i class="bi bi-clock me-1"></i>${escapeHtml(l.time)}
+        </div>
       </li>
     `;
   });
@@ -364,22 +405,32 @@ function renderLeaveList(items) {
 function renderAnnouncements(id, items, cat) {
   try {
     const el = document.getElementById(id);
-    el.innerHTML = items.length ? '' : '<li class="list-group-item text-muted text-center py-3">なし</li>';
+    const isStaff = id.includes('Staff');
+    const icon = isStaff ? 'bi-megaphone' : 'bi-broadcast';
 
-    items.forEach(a => {
+    el.innerHTML = items.length ? '' : `
+      <li class="list-group-item text-muted text-center py-4">
+        <i class="bi ${icon} opacity-25 fs-3 d-block mb-2"></i>
+        伝達事項なし
+      </li>
+    `;
+
+    items.forEach((a, index) => {
       const priorityHtml = a.priority === '◎' ? '<span class="priority-high">重要</span>' : '';
       el.innerHTML += `
-        <li class="list-group-item">
-          <div class="d-flex justify-content-between mb-1">
-            <div>
-              <span class="badge bg-light text-dark border me-2">${escapeHtml(a.target)}</span>
-              <small class="text-muted">報告: ${escapeHtml(a.reporter)}</small>
+        <li class="list-group-item" style="animation: fadeInUp ${0.2 + index * 0.1}s ease-out;">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <div class="d-flex align-items-center gap-2">
+              <span class="badge bg-light text-dark border">${escapeHtml(a.target)}</span>
+              <small class="text-muted">
+                <i class="bi bi-person-circle me-1"></i>${escapeHtml(a.reporter)}
+              </small>
             </div>
-            <button class="btn btn-sm text-danger opacity-25 p-0" onclick="deleteItem('${a.id}', '${cat}', 'この伝達事項')" title="削除">
-              <i class="bi bi-x-circle-fill"></i>
+            <button class="btn btn-sm text-danger opacity-25 btn-icon p-0" onclick="deleteItem('${a.id}', '${cat}', 'この伝達事項')" title="削除">
+              <i class="bi bi-x-circle-fill fs-5"></i>
             </button>
           </div>
-          <div class="fs-5">${priorityHtml}${escapeHtml(a.content)}</div>
+          <div class="fs-6 lh-base">${priorityHtml}${escapeHtml(a.content)}</div>
         </li>
       `;
     });
@@ -395,15 +446,23 @@ function renderAnnouncements(id, items, cat) {
 function renderMeetings(items) {
   try {
     const el = document.getElementById('meetingList');
-    el.innerHTML = items.length ? '' : '<tr><td colspan="3" class="text-center text-muted small py-2">予定なし</td></tr>';
+    el.innerHTML = items.length ? '' : `
+      <tr>
+        <td colspan="3" class="text-center text-muted py-3">
+          <i class="bi bi-people opacity-25 fs-4 d-block mb-1"></i>
+          <small>予定なし</small>
+        </td>
+      </tr>
+    `;
 
     items.forEach(m => {
       const rowClass = m.is_fixed ? 'fixed-meeting' : '';
+      const icon = m.is_fixed ? '<i class="bi bi-arrow-repeat me-1" title="定例会議"></i>' : '';
       el.innerHTML += `
         <tr class="${rowClass}">
-          <td>${escapeHtml(m.name)}</td>
-          <td>${escapeHtml(m.time)}</td>
-          <td>${escapeHtml(m.place)}</td>
+          <td class="text-start">${icon}${escapeHtml(m.name)}</td>
+          <td><i class="bi bi-clock me-1"></i>${escapeHtml(m.time)}</td>
+          <td><i class="bi bi-geo-alt me-1"></i>${escapeHtml(m.place)}</td>
         </tr>
       `;
     });

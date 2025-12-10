@@ -1,78 +1,638 @@
 <style>
   /**
-   * 職員朝礼伝達システム - スタイルシート (v7.0)
+   * 職員朝礼伝達システム - Modern Design (v7.0)
+   * フラットデザイン・グラデーションなし
    */
 
-  /* Base Styles */
+  /* =============================================================================
+     CSS Variables - モダンなカラーパレット
+     ============================================================================= */
+  :root {
+    /* Primary Colors - 深いブルー系 */
+    --color-primary: #2C3E50;
+    --color-primary-light: #34495E;
+    --color-primary-dark: #1A252F;
+
+    /* Secondary Colors - アクセントカラー */
+    --color-accent: #3498DB;
+    --color-accent-light: #5DADE2;
+    --color-accent-dark: #2874A6;
+
+    /* Status Colors */
+    --color-success: #27AE60;
+    --color-warning: #F39C12;
+    --color-danger: #E74C3C;
+    --color-info: #16A085;
+
+    /* Neutral Colors */
+    --color-white: #FFFFFF;
+    --color-gray-50: #F8F9FA;
+    --color-gray-100: #ECF0F1;
+    --color-gray-200: #D5DBDB;
+    --color-gray-300: #BDC3C7;
+    --color-gray-400: #95A5A6;
+    --color-gray-500: #7F8C8D;
+    --color-gray-600: #5D6D7E;
+    --color-gray-700: #34495E;
+    --color-gray-800: #2C3E50;
+    --color-gray-900: #1C2833;
+
+    /* Shadows */
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+    --shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.15);
+
+    /* Border Radius */
+    --radius-sm: 6px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+
+    /* Spacing */
+    --spacing-xs: 0.5rem;
+    --spacing-sm: 1rem;
+    --spacing-md: 1.5rem;
+    --spacing-lg: 2rem;
+    --spacing-xl: 3rem;
+
+    /* Transitions */
+    --transition-fast: 150ms ease-in-out;
+    --transition-base: 250ms ease-in-out;
+    --transition-slow: 350ms ease-in-out;
+  }
+
+  /* =============================================================================
+     Base Styles
+     ============================================================================= */
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
   body {
-    font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
-    font-size: 16px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+                 "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    background: var(--color-gray-50);
+    color: var(--color-gray-800);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Navbar */
-  .navbar-brand { white-space: nowrap; }
-  @media (max-width: 768px) {
-    .navbar .btn-group { width: 100%; justify-content: center; margin-bottom: 0.5rem; }
-    .navbar input[type="date"] { width: 100% !important; text-align: center; }
-    .order-2 { flex-basis: 100%; }
+  /* =============================================================================
+     Navigation Bar - モダンデザイン
+     ============================================================================= */
+  .navbar {
+    background: var(--color-white) !important;
+    border-bottom: 1px solid var(--color-gray-200);
+    box-shadow: var(--shadow-sm);
+    padding: 0.75rem 1.5rem !important;
   }
 
-  /* Cards */
-  .card { border-radius: 8px; border: none; }
-  .card-header { border-bottom: 1px solid #f0f0f0; }
-  .list-group-item { padding: 0.75rem 1rem; border-bottom: 1px solid #f8f9fa; }
-  .small-list .list-group-item { padding: 0.5rem 0.75rem; }
-  .priority-high { color: #dc3545; font-weight: bold; border: 2px solid #dc3545; padding: 1px 6px; border-radius: 4px; font-size: 0.85em; margin-right: 6px; }
+  .navbar-brand {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-primary) !important;
+    letter-spacing: -0.5px;
+  }
 
-  /* Matrix Table */
-  .matrix-table th, .matrix-table td { min-width: 80px; height: 50px; font-size: 0.95rem; cursor: pointer; }
-  .matrix-table th { background-color: #f8f9fa; position: sticky; top: 0; z-index: 5; }
-  
-  .cell-occupied { background-color: #d1e7dd; color: #0f5132; font-weight: bold; vertical-align: middle; line-height: 1.2; transition: 0.2s; }
-  .cell-occupied:hover { background-color: #c1d6cc; }
+  .navbar .btn-group .btn {
+    border: 1px solid var(--color-gray-200);
+    background: var(--color-white);
+    color: var(--color-gray-700);
+    font-weight: 500;
+    transition: all var(--transition-base);
+  }
 
-  .cell-fixed { background-color: #f2f2f2 !important; color: #555; border: 1px dashed #ccc; cursor: pointer !important; vertical-align: middle; line-height: 1.2; }
-  .cell-fixed:hover { background-color: #e2e6ea !important; }
-  .cell-fixed::before { content: "🔒 "; font-size: 0.8em; opacity: 0.5; }
+  .navbar .btn-group .btn:hover {
+    background: var(--color-gray-50);
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+    transform: translateY(-1px);
+  }
 
-  .cell-cancelled { background-color: #f8d7da !important; color: #842029; text-decoration: line-through; vertical-align: middle; line-height: 1.2; }
+  .navbar input[type="date"] {
+    border: 1px solid var(--color-gray-200);
+    background: var(--color-white);
+    color: var(--color-gray-800);
+    border-radius: var(--radius-sm);
+    padding: 0.5rem 0.75rem;
+    font-weight: 500;
+    transition: all var(--transition-base);
+  }
 
-  .fixed-meeting { background-color: #f8f9fa; border-left: 3px solid #6c757d; }
-  .fixed-meeting td:first-child::before { content: "定例 "; font-size: 0.7em; background: #6c757d; color: white; padding: 1px 4px; border-radius: 3px; margin-right: 4px; }
-  
-  .text-purple { color: #6f42c1; }
+  .navbar input[type="date"]:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+  }
 
-  /* Delete Buttons */
-  .btn-sm.text-danger:hover { opacity: 1 !important; background-color: #f8f9fa; }
+  /* =============================================================================
+     Container
+     ============================================================================= */
+  .container-fluid {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: var(--spacing-lg);
+  }
 
-  /* Loading */
+  /* =============================================================================
+     Cards - モダンなカードデザイン
+     ============================================================================= */
+  .card {
+    background: var(--color-white);
+    border: none;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    margin-bottom: var(--spacing-md);
+    overflow: hidden;
+    transition: all var(--transition-base);
+  }
+
+  .card:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
+  }
+
+  .card-header {
+    background: var(--color-white);
+    border-bottom: 2px solid var(--color-gray-100);
+    padding: var(--spacing-md);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .card-header h5,
+  .card-header h6 {
+    margin: 0;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+  }
+
+  .card-body {
+    padding: var(--spacing-md);
+  }
+
+  /* カードの左ボーダーアクセント（グラデーションの代わり） */
+  .border-primary {
+    border-left: 4px solid var(--color-accent) !important;
+  }
+
+  .border-danger {
+    border-left: 4px solid var(--color-danger) !important;
+  }
+
+  .border-info {
+    border-left: 4px solid var(--color-info) !important;
+  }
+
+  /* =============================================================================
+     Buttons - モダンなボタンデザイン
+     ============================================================================= */
+  .btn {
+    border: none;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    padding: 0.5rem 1.25rem;
+    transition: all var(--transition-base);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 0.875rem;
+  }
+
+  .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+
+  .btn:active {
+    transform: translateY(0);
+  }
+
+  .btn-primary {
+    background: var(--color-accent);
+    color: var(--color-white);
+  }
+
+  .btn-primary:hover {
+    background: var(--color-accent-dark);
+  }
+
+  .btn-success {
+    background: var(--color-success);
+    color: var(--color-white);
+  }
+
+  .btn-success:hover {
+    background: #229954;
+  }
+
+  .btn-danger {
+    background: var(--color-danger);
+    color: var(--color-white);
+  }
+
+  .btn-danger:hover {
+    background: #C0392B;
+  }
+
+  .btn-outline-primary {
+    border: 2px solid var(--color-accent);
+    color: var(--color-accent);
+    background: transparent;
+  }
+
+  .btn-outline-primary:hover {
+    background: var(--color-accent);
+    color: var(--color-white);
+  }
+
+  /* =============================================================================
+     Badges - モダンなバッジ
+     ============================================================================= */
+  .badge {
+    padding: 0.4rem 0.8rem;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    font-size: 0.75rem;
+    letter-spacing: 0.3px;
+  }
+
+  .badge.bg-primary {
+    background: var(--color-accent) !important;
+  }
+
+  .badge.bg-success {
+    background: var(--color-success) !important;
+  }
+
+  .badge.bg-danger {
+    background: var(--color-danger) !important;
+  }
+
+  .badge.bg-secondary {
+    background: var(--color-gray-400) !important;
+  }
+
+  .badge.bg-info {
+    background: var(--color-info) !important;
+  }
+
+  /* =============================================================================
+     List Groups
+     ============================================================================= */
+  .list-group-item {
+    border: none;
+    border-bottom: 1px solid var(--color-gray-100);
+    padding: var(--spacing-md);
+    transition: all var(--transition-fast);
+  }
+
+  .list-group-item:hover {
+    background: var(--color-gray-50);
+  }
+
+  .list-group-item:last-child {
+    border-bottom: none;
+  }
+
+  /* =============================================================================
+     Display Date Section
+     ============================================================================= */
+  .display-date-section {
+    background: var(--color-primary);
+    color: var(--color-white);
+    padding: var(--spacing-md);
+    border-radius: var(--radius-sm);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .display-date-section h4 {
+    margin: 0;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+
+  /* =============================================================================
+     Priority High - 重要マーク
+     ============================================================================= */
+  .priority-high {
+    display: inline-block;
+    background: var(--color-danger);
+    color: var(--color-white);
+    padding: 0.25rem 0.75rem;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    font-size: 0.75rem;
+    margin-right: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* =============================================================================
+     Matrix Table - 特別教室予約
+     ============================================================================= */
+  .matrix-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+  }
+
+  .matrix-table th,
+  .matrix-table td {
+    padding: 0.75rem;
+    text-align: center;
+    border: 1px solid var(--color-gray-200);
+    font-size: 0.875rem;
+    transition: all var(--transition-fast);
+  }
+
+  .matrix-table th {
+    background: var(--color-gray-100);
+    font-weight: 700;
+    color: var(--color-gray-700);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .matrix-table td {
+    cursor: pointer;
+    background: var(--color-white);
+    min-height: 60px;
+  }
+
+  .matrix-table td:hover {
+    background: var(--color-gray-50);
+    box-shadow: inset 0 0 0 2px var(--color-accent);
+  }
+
+  .cell-occupied {
+    background: #D5F4E6 !important;
+    color: var(--color-success);
+    font-weight: 600;
+  }
+
+  .cell-occupied:hover {
+    background: #A9DFBF !important;
+  }
+
+  .cell-fixed {
+    background: var(--color-gray-100) !important;
+    color: var(--color-gray-600);
+    border: 2px dashed var(--color-gray-300) !important;
+  }
+
+  .cell-fixed:hover {
+    background: var(--color-gray-200) !important;
+  }
+
+  .cell-fixed::before {
+    content: "🔒 ";
+    opacity: 0.6;
+  }
+
+  .cell-cancelled {
+    background: #FADBD8 !important;
+    color: var(--color-danger);
+    text-decoration: line-through;
+  }
+
+  /* =============================================================================
+     Fixed Meeting Row
+     ============================================================================= */
+  .fixed-meeting {
+    background: var(--color-gray-50);
+    border-left: 3px solid var(--color-gray-500);
+  }
+
+  .fixed-meeting td:first-child {
+    position: relative;
+    padding-left: 3rem;
+  }
+
+  .fixed-meeting td:first-child::before {
+    content: "定例";
+    position: absolute;
+    left: 0.75rem;
+    background: var(--color-gray-500);
+    color: var(--color-white);
+    padding: 0.15rem 0.4rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+
+  /* =============================================================================
+     Modal
+     ============================================================================= */
+  .modal-content {
+    border: none;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl);
+  }
+
+  .modal-header {
+    background: var(--color-gray-50);
+    border-bottom: 2px solid var(--color-gray-200);
+    padding: var(--spacing-md);
+  }
+
+  .modal-title {
+    font-weight: 700;
+    color: var(--color-primary);
+  }
+
+  .modal-body {
+    padding: var(--spacing-lg);
+  }
+
+  .modal-footer {
+    background: var(--color-gray-50);
+    border-top: 1px solid var(--color-gray-200);
+    padding: var(--spacing-md);
+  }
+
+  /* =============================================================================
+     Form Controls
+     ============================================================================= */
+  .form-control,
+  .form-select {
+    border: 1px solid var(--color-gray-200);
+    border-radius: var(--radius-sm);
+    padding: 0.625rem 0.875rem;
+    transition: all var(--transition-base);
+    font-size: 0.9375rem;
+  }
+
+  .form-control:focus,
+  .form-select:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+  }
+
+  .form-label {
+    font-weight: 600;
+    color: var(--color-gray-700);
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+  }
+
+  /* =============================================================================
+     Loading Overlay
+     ============================================================================= */
   .loading-overlay {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.95);
     display: flex;
     justify-content: center;
     align-items: center;
     z-index: 9999;
-    backdrop-filter: blur(2px);
+    backdrop-filter: blur(8px);
   }
 
-  /* Toast Messages */
+  .spinner-border {
+    width: 3rem;
+    height: 3rem;
+    border-width: 0.3rem;
+    border-color: var(--color-accent);
+    border-right-color: transparent;
+  }
+
+  /* =============================================================================
+     Toast Messages
+     ============================================================================= */
   #customToast .toast {
-    min-width: 300px;
+    min-width: 350px;
     border: none;
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    animation: slideInDown 0.3s ease-out;
+  }
+
+  @keyframes slideInDown {
+    from {
+      transform: translate(-50%, -100%);
+      opacity: 0;
+    }
+    to {
+      transform: translate(-50%, 0);
+      opacity: 1;
+    }
   }
 
   #customToast .toast-body {
-    padding: 1rem;
-    font-size: 0.95rem;
+    padding: 1.25rem;
+    font-size: 0.9375rem;
+    font-weight: 500;
   }
 
-  /* Accessibility */
+  /* =============================================================================
+     Icon Buttons
+     ============================================================================= */
+  .btn-icon {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-fast);
+  }
+
+  .btn-icon:hover {
+    transform: scale(1.1);
+  }
+
+  /* =============================================================================
+     Utility Classes
+     ============================================================================= */
+  .text-primary {
+    color: var(--color-accent) !important;
+  }
+
+  .text-danger {
+    color: var(--color-danger) !important;
+  }
+
+  .text-success {
+    color: var(--color-success) !important;
+  }
+
+  .text-purple {
+    color: #9B59B6 !important;
+  }
+
+  .bg-light {
+    background: var(--color-gray-50) !important;
+  }
+
+  /* =============================================================================
+     Responsive Design
+     ============================================================================= */
+  @media (max-width: 768px) {
+    .container-fluid {
+      padding: var(--spacing-sm);
+    }
+
+    .card {
+      margin-bottom: var(--spacing-sm);
+    }
+
+    .card-header,
+    .card-body {
+      padding: var(--spacing-sm);
+    }
+
+    .navbar {
+      padding: 0.5rem 1rem !important;
+    }
+
+    .matrix-table th,
+    .matrix-table td {
+      padding: 0.5rem;
+      font-size: 0.75rem;
+    }
+  }
+
+  /* =============================================================================
+     Print Styles
+     ============================================================================= */
+  @media print {
+    .navbar,
+    .btn,
+    .loading-overlay,
+    #customToast {
+      display: none !important;
+    }
+
+    .card {
+      page-break-inside: avoid;
+      box-shadow: none;
+      border: 1px solid var(--color-gray-300);
+    }
+
+    body {
+      background: white;
+    }
+  }
+
+  /* =============================================================================
+     Accessibility
+     ============================================================================= */
   .visually-hidden {
     position: absolute !important;
     width: 1px !important;
@@ -85,16 +645,8 @@
     border: 0 !important;
   }
 
-  /* Print Styles */
-  @media print {
-    .navbar,
-    .btn,
-    .loading-overlay {
-      display: none !important;
-    }
-
-    .card {
-      page-break-inside: avoid;
-    }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
 </style>
