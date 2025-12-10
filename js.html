@@ -1,111 +1,467 @@
 <script>
+/**
+ * 職員朝礼伝達システム - Frontend Logic (v7.0)
+ */
+
+// =============================================================================
+// グローバル変数
+// =============================================================================
+
 let currentDate = new Date();
 let currentData = {};
 let staffList = [];
-const modal = new bootstrap.Modal(document.getElementById('entryModal'));
+let modal = null;
 
-const ROOMS = ['選択1', '選択2', '選択3', '選択4', 'PC室', '会議室', '視聴覚室'];
-const PERIODS = ['1限', '2限', '3限', '4限', '昼', '5限', '6限', '放課後'];
+// =============================================================================
+// 定数定義
+// =============================================================================
 
-window.onload = function() { setToday(); };
+const CONFIG = {
+  ROOMS: ['選択1', '選択2', '選択3', '選択4', 'PC室', '会議室', '視聴覚室'],
+  PERIODS: ['1限', '2限', '3限', '4限', '昼', '5限', '6限', '放課後'],
+  DAYS_OF_WEEK: ['日', '月', '火', '水', '木', '金', '土'],
+  TOAST_DURATION: 3000
+};
 
-function setToday() { currentDate = new Date(); updateDatePicker(); loadData(); }
-function changeDate(delta) { currentDate.setDate(currentDate.getDate() + delta); updateDatePicker(); loadData(); }
+const MESSAGE = {
+  LOAD_SUCCESS: 'データを読み込みました',
+  LOAD_ERROR: 'データの読み込みに失敗しました',
+  SAVE_SUCCESS: 'データを保存しました',
+  SAVE_ERROR: 'データの保存に失敗しました',
+  DELETE_SUCCESS: 'データを削除しました',
+  DELETE_ERROR: 'データの削除に失敗しました',
+  COPY_SUCCESS: 'コピーしました',
+  COPY_ERROR: 'コピーに失敗しました'
+};
+
+// =============================================================================
+// 初期化
+// =============================================================================
+
+window.onload = function() {
+  initializeApp();
+};
+
+/**
+ * アプリケーションの初期化
+ */
+function initializeApp() {
+  try {
+    modal = new bootstrap.Modal(document.getElementById('entryModal'));
+    setToday();
+  } catch (e) {
+    console.error('初期化エラー:', e);
+    showErrorToast('アプリケーションの初期化に失敗しました');
+  }
+}
+
+// =============================================================================
+// 日付操作
+// =============================================================================
+
+/**
+ * 今日の日付に設定
+ */
+function setToday() {
+  currentDate = new Date();
+  updateDatePicker();
+  loadData();
+}
+
+/**
+ * 日付を変更
+ * @param {number} delta - 変更する日数（+1: 翌日, -1: 前日）
+ */
+function changeDate(delta) {
+  currentDate.setDate(currentDate.getDate() + delta);
+  updateDatePicker();
+  loadData();
+}
+
+/**
+ * 日付ピッカーを更新
+ */
 function updateDatePicker() {
-  const y = currentDate.getFullYear(), m = ('0' + (currentDate.getMonth() + 1)).slice(-2), d = ('0' + currentDate.getDate()).slice(-2);
+  const y = currentDate.getFullYear();
+  const m = ('0' + (currentDate.getMonth() + 1)).slice(-2);
+  const d = ('0' + currentDate.getDate()).slice(-2);
   document.getElementById('datePicker').value = `${y}-${m}-${d}`;
 }
-document.getElementById('datePicker').addEventListener('change', function() { currentDate = new Date(this.value); loadData(); });
 
-function loadData() {
-  showLoading(true);
-  google.script.run.withSuccessHandler(onDataLoaded).withFailureHandler(onFailure).getData(document.getElementById('datePicker').value);
+// 日付ピッカーのイベントリスナー
+document.addEventListener('DOMContentLoaded', function() {
+  const datePicker = document.getElementById('datePicker');
+  if (datePicker) {
+    datePicker.addEventListener('change', function() {
+      currentDate = new Date(this.value);
+      loadData();
+    });
+  }
+});
+
+// =============================================================================
+// ユーティリティ関数
+// =============================================================================
+
+/**
+ * HTMLエスケープ（XSS対策）
+ * @param {string} text - エスケープする文字列
+ * @returns {string} エスケープされた文字列
+ */
+function escapeHtml(text) {
+  if (!text) return '';
+  const map = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  };
+  return text.toString().replace(/[&<>"']/g, m => map[m]);
 }
 
+/**
+ * ローディング表示の切り替え
+ * @param {boolean} show - 表示するかどうか
+ */
+function showLoading(show) {
+  const loading = document.getElementById('loading');
+  if (loading) {
+    loading.style.display = show ? 'flex' : 'none';
+  }
+}
+
+// =============================================================================
+// トーストメッセージ
+// =============================================================================
+
+/**
+ * 成功メッセージを表示
+ * @param {string} message - 表示するメッセージ
+ */
+function showSuccessToast(message) {
+  showToast(message, 'success');
+}
+
+/**
+ * エラーメッセージを表示
+ * @param {string} message - 表示するメッセージ
+ */
+function showErrorToast(message) {
+  showToast(message, 'error');
+}
+
+/**
+ * トーストメッセージを表示
+ * @param {string} message - 表示するメッセージ
+ * @param {string} type - メッセージタイプ（'success' or 'error'）
+ */
+function showToast(message, type = 'info') {
+  // 既存のトーストを削除
+  const existingToast = document.getElementById('customToast');
+  if (existingToast) {
+    existingToast.remove();
+  }
+
+  // トーストHTML作成
+  const bgColor = type === 'success' ? 'bg-success' : type === 'error' ? 'bg-danger' : 'bg-info';
+  const icon = type === 'success' ? 'check-circle-fill' : type === 'error' ? 'exclamation-triangle-fill' : 'info-circle-fill';
+
+  const toastHTML = `
+    <div id="customToast" class="position-fixed top-0 start-50 translate-middle-x mt-3" style="z-index: 9999;">
+      <div class="toast show ${bgColor} text-white" role="alert">
+        <div class="toast-body d-flex align-items-center">
+          <i class="bi bi-${icon} me-2"></i>
+          <span>${message}</span>
+          <button type="button" class="btn-close btn-close-white ms-auto" onclick="this.closest('.toast').remove()"></button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML('beforeend', toastHTML);
+
+  // 自動的に削除
+  setTimeout(() => {
+    const toast = document.getElementById('customToast');
+    if (toast) {
+      toast.remove();
+    }
+  }, CONFIG.TOAST_DURATION);
+}
+
+// =============================================================================
+// データ読み込み
+// =============================================================================
+
+/**
+ * データを読み込む
+ */
+function loadData() {
+  try {
+    showLoading(true);
+    const dateStr = document.getElementById('datePicker').value;
+    console.log('Loading data for date:', dateStr);
+
+    google.script.run
+      .withSuccessHandler(onDataLoaded)
+      .withFailureHandler(onFailure)
+      .getData(dateStr);
+  } catch (e) {
+    console.error('loadData error:', e);
+    showErrorToast(MESSAGE.LOAD_ERROR);
+    showLoading(false);
+  }
+}
+
+/**
+ * データ読み込み成功時の処理
+ * @param {string} json - JSON形式のデータ
+ */
 function onDataLoaded(json) {
-  const data = JSON.parse(json);
-  currentData = data;
-  staffList = data.staff;
+  try {
+    const data = JSON.parse(json);
+    currentData = data;
+    staffList = data.staff;
 
-  const days = ['日', '月', '火', '水', '木', '金', '土'];
-  document.getElementById('displayDate').textContent = `${document.getElementById('datePicker').value} (${days[currentDate.getDay()]})`;
-  
-  // 行事リスト描画
-  renderDailyList(data.daily);
+    console.log('Data loaded successfully:', {
+      daily: data.daily.length,
+      trips: data.trips.length,
+      leaves: data.leaves.length,
+      meetings: data.meetings.length
+    });
 
-  renderList('tripList', data.trips, t => `<li class="list-group-item"><div class="d-flex justify-content-between"><strong>${t.staff_name}</strong><span class="badge bg-success rounded-pill align-self-center">${t.time}</span></div><div class="small text-muted text-truncate">${t.location} / ${t.purpose}</div></li>`);
-  renderList('leaveList', data.leaves, l => `<li class="list-group-item"><div class="d-flex justify-content-between"><strong>${l.staff_name}</strong><span class="badge ${l.type==='年休'?'bg-primary':(l.type==='夏季休暇'?'bg-info text-dark':'bg-secondary')} rounded-pill align-self-center">${l.type}</span></div><div class="small text-muted">${l.time}</div></li>`);
-  renderMeetings(data.meetings);
-  
-  renderAnnouncements('announceStaffList', data.announcements_staff, 'announce');
-  renderAnnouncements('announceStudentList', data.announcements_student, 'announce');
-  
-  renderRoomMatrix(data.reservations);
+    // 日付表示を更新
+    const dateStr = document.getElementById('datePicker').value;
+    const dayOfWeek = CONFIG.DAYS_OF_WEEK[currentDate.getDay()];
+    document.getElementById('displayDate').textContent = `${dateStr} (${dayOfWeek})`;
 
-  document.getElementById('badgeTrip').textContent = data.counts.trip;
-  document.getElementById('badgeLeave').textContent = data.counts.leave;
-  document.getElementById('badgeMeeting').textContent = data.counts.meeting;
+    // 各セクションをレンダリング
+    renderDailyList(data.daily);
+    renderTripList(data.trips);
+    renderLeaveList(data.leaves);
+    renderMeetings(data.meetings);
+    renderAnnouncements('announceStaffList', data.announcements_staff, 'announce');
+    renderAnnouncements('announceStudentList', data.announcements_student, 'announce');
+    renderRoomMatrix(data.reservations);
+
+    // カウント表示を更新
+    document.getElementById('badgeTrip').textContent = data.counts.trip;
+    document.getElementById('badgeLeave').textContent = data.counts.leave;
+    document.getElementById('badgeMeeting').textContent = data.counts.meeting;
+
+    showLoading(false);
+  } catch (e) {
+    console.error('onDataLoaded error:', e);
+    showErrorToast(MESSAGE.LOAD_ERROR);
+    showLoading(false);
+  }
+}
+
+/**
+ * データ読み込み失敗時の処理
+ * @param {Error} error - エラーオブジェクト
+ */
+function onFailure(error) {
+  console.error('Server error:', error);
+  showErrorToast(`${MESSAGE.LOAD_ERROR}: ${error.message || error}`);
   showLoading(false);
 }
 
-// 行事リスト
+// =============================================================================
+// レンダリング関数
+// =============================================================================
+
+/**
+ * 行事リストをレンダリング
+ * @param {Array} items - 行事データの配列
+ */
 function renderDailyList(items) {
-  const list = document.getElementById('dailyList');
-  list.innerHTML = '';
-  document.getElementById('dailyCount').textContent = items.length + '件';
-  if (!items || items.length === 0) {
-    list.innerHTML = '<li class="list-group-item text-muted text-center py-4">予定はありません</li>';
-    return;
-  }
-  // 時刻がある場合は並び替え
-  items.sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
-  items.forEach(d => {
-    const timeHtml = d.time ? `<span class="badge bg-primary me-2">${d.time}</span>` : '';
-    const noteHtml = d.note ? `<br><small class="text-muted"><i class="bi bi-info-circle me-1"></i>${d.note}</small>` : '';
-    list.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-start"><div class="me-auto"><div class="fw-bold fs-5">${timeHtml}${d.content}</div>${noteHtml}</div><button class="btn btn-sm text-danger opacity-50" onclick="deleteItem('${d.id}', 'daily', '${d.content}')"><i class="bi bi-trash"></i></button></li>`;
-  });
-}
+  try {
+    const list = document.getElementById('dailyList');
+    list.innerHTML = '';
+    document.getElementById('dailyCount').textContent = items.length + '件';
 
-function renderList(id, items, fn) {
-  const el = document.getElementById(id); el.innerHTML = items.length ? '' : '<li class="list-group-item text-muted small py-2">予定なし</li>';
-  items.forEach(i => el.innerHTML += fn(i));
-}
+    if (!items || items.length === 0) {
+      list.innerHTML = '<li class="list-group-item text-muted text-center py-4">予定はありません</li>';
+      return;
+    }
 
-// 伝達事項 (削除ボタン付)
-function renderAnnouncements(id, items, cat) {
-  const el = document.getElementById(id); el.innerHTML = items.length ? '' : '<li class="list-group-item text-muted text-center py-3">なし</li>';
-  items.forEach(a => el.innerHTML += `<li class="list-group-item"><div class="d-flex justify-content-between mb-1"><div><span class="badge bg-light text-dark border me-2">${a.target}</span><small class="text-muted">報告: ${a.reporter}</small></div><button class="btn btn-sm text-danger opacity-25 p-0" onclick="deleteItem('${a.id}', '${cat}', 'この伝達事項')"><i class="bi bi-x-circle-fill"></i></button></div><div class="fs-5">${a.priority==='◎'?'<span class="priority-high">重要</span>':''}${a.content}</div></li>`);
-}
+    // 時刻でソート
+    items.sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
 
-function renderMeetings(items) {
-  const el = document.getElementById('meetingList'); el.innerHTML = items.length ? '' : '<tr><td colspan="3" class="text-center text-muted small py-2">予定なし</td></tr>';
-  items.forEach(m => el.innerHTML += `<tr class="${m.is_fixed?'fixed-meeting':''}"><td>${m.name}</td><td>${m.time}</td><td>${m.place}</td></tr>`);
-}
+    items.forEach(d => {
+      const timeHtml = d.time ? `<span class="badge bg-primary me-2">${escapeHtml(d.time)}</span>` : '';
+      const noteHtml = d.note ? `<br><small class="text-muted"><i class="bi bi-info-circle me-1"></i>${escapeHtml(d.note)}</small>` : '';
+      const contentSafe = escapeHtml(d.content);
 
-function renderRoomMatrix(reservations) {
-  const thead = document.querySelector('#roomTable thead'), tbody = document.querySelector('#roomTable tbody');
-  let headHtml = '<tr><th class="bg-light"></th>';
-  PERIODS.forEach(p => headHtml += `<th>${p}</th>`);
-  thead.innerHTML = headHtml + '</tr>';
-  let bodyHtml = '';
-  ROOMS.forEach(room => {
-    bodyHtml += `<tr><th class="bg-light">${room}</th>`;
-    PERIODS.forEach(period => {
-      const nr = reservations.find(r => r.room === room && r.period === period && !r.is_fixed);
-      const fr = reservations.find(r => r.room === room && r.period === period && r.is_fixed);
-      if (nr) {
-        const rh = nr.reserver ? `<div style="font-size:0.75em; opacity:0.8; line-height:1.2;">${nr.reserver}</div>` : '';
-        bodyHtml += nr.content === '中止' ? `<td class="cell-cancelled" onclick="deleteOverride('${nr.id}', '${nr.content}')"><small>中止</small>${rh}</td>` : `<td class="cell-occupied" onclick="deleteOverride('${nr.id}', '${nr.content}')" title="${nr.content}"><div>${nr.content}</div>${rh}</td>`;
-      } else if (fr) {
-        const rh = fr.reserver ? `<div style="font-size:0.75em; opacity:0.8; line-height:1.2;">${fr.reserver}</div>` : '';
-        bodyHtml += `<td class="cell-fixed" onclick="openFixedRoomModal('${room}', '${period}', '${fr.content}', '${fr.reserver||''}')" title="${fr.content}"><div>${fr.content}</div>${rh}</td>`;
-      } else {
-        bodyHtml += `<td onclick="openRoomModal('${room}', '${period}')"></td>`;
-      }
+      list.innerHTML += `
+        <li class="list-group-item d-flex justify-content-between align-items-start">
+          <div class="me-auto">
+            <div class="fw-bold fs-5">${timeHtml}${contentSafe}</div>
+            ${noteHtml}
+          </div>
+          <button class="btn btn-sm text-danger opacity-50" onclick="deleteItem('${d.id}', 'daily', '${contentSafe}')" title="削除">
+            <i class="bi bi-trash"></i>
+          </button>
+        </li>
+      `;
     });
-    bodyHtml += '</tr>';
+  } catch (e) {
+    console.error('renderDailyList error:', e);
+  }
+}
+
+/**
+ * 出張リストをレンダリング
+ * @param {Array} items - 出張データの配列
+ */
+function renderTripList(items) {
+  const list = document.getElementById('tripList');
+  list.innerHTML = items.length ? '' : '<li class="list-group-item text-muted small py-2">予定なし</li>';
+
+  items.forEach(t => {
+    list.innerHTML += `
+      <li class="list-group-item">
+        <div class="d-flex justify-content-between">
+          <strong>${escapeHtml(t.staff_name)}</strong>
+          <span class="badge bg-success rounded-pill align-self-center">${escapeHtml(t.time)}</span>
+        </div>
+        <div class="small text-muted text-truncate">${escapeHtml(t.location)} / ${escapeHtml(t.purpose)}</div>
+      </li>
+    `;
   });
-  tbody.innerHTML = bodyHtml;
+}
+
+/**
+ * 休暇リストをレンダリング
+ * @param {Array} items - 休暇データの配列
+ */
+function renderLeaveList(items) {
+  const list = document.getElementById('leaveList');
+  list.innerHTML = items.length ? '' : '<li class="list-group-item text-muted small py-2">予定なし</li>';
+
+  items.forEach(l => {
+    const badgeClass = l.type === '年休' ? 'bg-primary' : l.type === '夏季休暇' ? 'bg-info text-dark' : 'bg-secondary';
+    list.innerHTML += `
+      <li class="list-group-item">
+        <div class="d-flex justify-content-between">
+          <strong>${escapeHtml(l.staff_name)}</strong>
+          <span class="badge ${badgeClass} rounded-pill align-self-center">${escapeHtml(l.type)}</span>
+        </div>
+        <div class="small text-muted">${escapeHtml(l.time)}</div>
+      </li>
+    `;
+  });
+}
+
+/**
+ * 伝達事項をレンダリング
+ * @param {string} id - 要素ID
+ * @param {Array} items - 伝達事項データの配列
+ * @param {string} cat - カテゴリ
+ */
+function renderAnnouncements(id, items, cat) {
+  try {
+    const el = document.getElementById(id);
+    el.innerHTML = items.length ? '' : '<li class="list-group-item text-muted text-center py-3">なし</li>';
+
+    items.forEach(a => {
+      const priorityHtml = a.priority === '◎' ? '<span class="priority-high">重要</span>' : '';
+      el.innerHTML += `
+        <li class="list-group-item">
+          <div class="d-flex justify-content-between mb-1">
+            <div>
+              <span class="badge bg-light text-dark border me-2">${escapeHtml(a.target)}</span>
+              <small class="text-muted">報告: ${escapeHtml(a.reporter)}</small>
+            </div>
+            <button class="btn btn-sm text-danger opacity-25 p-0" onclick="deleteItem('${a.id}', '${cat}', 'この伝達事項')" title="削除">
+              <i class="bi bi-x-circle-fill"></i>
+            </button>
+          </div>
+          <div class="fs-5">${priorityHtml}${escapeHtml(a.content)}</div>
+        </li>
+      `;
+    });
+  } catch (e) {
+    console.error('renderAnnouncements error:', e);
+  }
+}
+
+/**
+ * 会議リストをレンダリング
+ * @param {Array} items - 会議データの配列
+ */
+function renderMeetings(items) {
+  try {
+    const el = document.getElementById('meetingList');
+    el.innerHTML = items.length ? '' : '<tr><td colspan="3" class="text-center text-muted small py-2">予定なし</td></tr>';
+
+    items.forEach(m => {
+      const rowClass = m.is_fixed ? 'fixed-meeting' : '';
+      el.innerHTML += `
+        <tr class="${rowClass}">
+          <td>${escapeHtml(m.name)}</td>
+          <td>${escapeHtml(m.time)}</td>
+          <td>${escapeHtml(m.place)}</td>
+        </tr>
+      `;
+    });
+  } catch (e) {
+    console.error('renderMeetings error:', e);
+  }
+}
+
+/**
+ * 教室予約マトリックスをレンダリング
+ * @param {Array} reservations - 予約データの配列
+ */
+function renderRoomMatrix(reservations) {
+  try {
+    const thead = document.querySelector('#roomTable thead');
+    const tbody = document.querySelector('#roomTable tbody');
+
+    // ヘッダー行を作成
+    let headHtml = '<tr><th class="bg-light"></th>';
+    CONFIG.PERIODS.forEach(p => {
+      headHtml += `<th>${escapeHtml(p)}</th>`;
+    });
+    thead.innerHTML = headHtml + '</tr>';
+
+    // ボディ行を作成
+    let bodyHtml = '';
+    CONFIG.ROOMS.forEach(room => {
+      bodyHtml += `<tr><th class="bg-light">${escapeHtml(room)}</th>`;
+
+      CONFIG.PERIODS.forEach(period => {
+        const nr = reservations.find(r => r.room === room && r.period === period && !r.is_fixed);
+        const fr = reservations.find(r => r.room === room && r.period === period && r.is_fixed);
+
+        if (nr) {
+          // 通常予約（固定設定の上書き）
+          const reserver = nr.reserver ? `<div style="font-size:0.75em; opacity:0.8; line-height:1.2;">${escapeHtml(nr.reserver)}</div>` : '';
+          if (nr.content === '中止') {
+            bodyHtml += `<td class="cell-cancelled" onclick="deleteOverride('${nr.id}', '中止')" title="クリックして削除"><small>中止</small>${reserver}</td>`;
+          } else {
+            bodyHtml += `<td class="cell-occupied" onclick="deleteOverride('${nr.id}', '${escapeHtml(nr.content)}')" title="${escapeHtml(nr.content)} (クリックして削除)"><div>${escapeHtml(nr.content)}</div>${reserver}</td>`;
+          }
+        } else if (fr) {
+          // 固定予約
+          const reserver = fr.reserver ? `<div style="font-size:0.75em; opacity:0.8; line-height:1.2;">${escapeHtml(fr.reserver)}</div>` : '';
+          bodyHtml += `<td class="cell-fixed" onclick="openFixedRoomModal('${escapeHtml(room)}', '${escapeHtml(period)}', '${escapeHtml(fr.content)}', '${escapeHtml(fr.reserver || '')}')" title="${escapeHtml(fr.content)} (固定設定)"><div>${escapeHtml(fr.content)}</div>${reserver}</td>`;
+        } else {
+          // 空き
+          bodyHtml += `<td onclick="openRoomModal('${escapeHtml(room)}', '${escapeHtml(period)}')" title="クリックして予約"></td>`;
+        }
+      });
+
+      bodyHtml += '</tr>';
+    });
+
+    tbody.innerHTML = bodyHtml;
+  } catch (e) {
+    console.error('renderRoomMatrix error:', e);
+  }
 }
 
 // Modals
@@ -151,38 +507,182 @@ function openFixedRoomModal(room, period, original, owner) {
 }
 function setCancelContent() { document.getElementById('inputContent').value = '中止'; }
 
+// =============================================================================
+// フォーム送信・削除
+// =============================================================================
+
+/**
+ * フォームを送信
+ */
 function submitForm() {
-  const cat = document.getElementById('entryCategory').value, data = { date: document.getElementById('datePicker').value };
-  if (cat === 'daily') { data.time = document.getElementById('inputTime').value; data.content = document.getElementById('inputContent').value; data.note = document.getElementById('inputNote').value; }
-  else if (cat === 'announce') { data.type = document.getElementById('announceType').value; data.priority = document.querySelector('input[name="prio"]:checked').value; data.target = document.getElementById('inputTarget').value; data.content = document.getElementById('inputContent').value; data.reporter = document.getElementById('inputReporter').value; }
-  else if (cat === 'trip') { data.staff = document.getElementById('inputStaff').value; data.purpose = document.getElementById('inputPurpose').value; data.location = document.getElementById('inputLocation').value; data.time = document.getElementById('inputTime').value; data.note = document.getElementById('inputNote').value; }
-  else if (cat === 'leave') { data.staff = document.getElementById('inputStaff').value; data.type = document.getElementById('inputType').value; data.time = document.getElementById('inputTime').value; }
-  else if (cat === 'meeting') { data.name = document.getElementById('inputName').value; data.time = document.getElementById('inputTime').value; data.place = document.getElementById('inputPlace').value; }
-  else if (cat === 'room') { data.room = document.getElementById('inputRoom').value; data.period = document.getElementById('inputPeriod').value; data.content = document.getElementById('inputContent').value; data.reserver = document.getElementById('inputReserver').value; }
-  showLoading(true); modal.hide();
-  google.script.run.withSuccessHandler(loadData).withFailureHandler(onFailure).saveData(cat, data);
+  try {
+    const cat = document.getElementById('entryCategory').value;
+    const data = { date: document.getElementById('datePicker').value };
+
+    // カテゴリごとにデータを収集
+    if (cat === 'daily') {
+      data.time = document.getElementById('inputTime')?.value || '';
+      data.content = document.getElementById('inputContent')?.value || '';
+      data.note = document.getElementById('inputNote')?.value || '';
+
+      if (!data.content.trim()) {
+        showErrorToast('内容を入力してください');
+        return;
+      }
+    } else if (cat === 'announce') {
+      data.type = document.getElementById('announceType').value;
+      data.priority = document.querySelector('input[name="prio"]:checked')?.value || '・';
+      data.target = document.getElementById('inputTarget')?.value || '';
+      data.content = document.getElementById('inputContent')?.value || '';
+      data.reporter = document.getElementById('inputReporter')?.value || '';
+
+      if (!data.content.trim() || !data.reporter) {
+        showErrorToast('内容と報告者を入力してください');
+        return;
+      }
+    } else if (cat === 'trip') {
+      data.staff = document.getElementById('inputStaff')?.value || '';
+      data.purpose = document.getElementById('inputPurpose')?.value || '';
+      data.location = document.getElementById('inputLocation')?.value || '';
+      data.time = document.getElementById('inputTime')?.value || '1日';
+      data.note = document.getElementById('inputNote')?.value || '';
+
+      if (!data.staff || !data.purpose || !data.location) {
+        showErrorToast('職員、用務、場所を入力してください');
+        return;
+      }
+    } else if (cat === 'leave') {
+      data.staff = document.getElementById('inputStaff')?.value || '';
+      data.type = document.getElementById('inputType')?.value || '';
+      data.time = document.getElementById('inputTime')?.value || '1日';
+
+      if (!data.staff || !data.type) {
+        showErrorToast('職員と種別を入力してください');
+        return;
+      }
+    } else if (cat === 'meeting') {
+      data.name = document.getElementById('inputName')?.value || '';
+      data.time = document.getElementById('inputTime')?.value || '放課後';
+      data.place = document.getElementById('inputPlace')?.value || '会議室';
+
+      if (!data.name.trim()) {
+        showErrorToast('会議名を入力してください');
+        return;
+      }
+    } else if (cat === 'room') {
+      data.room = document.getElementById('inputRoom')?.value || '';
+      data.period = document.getElementById('inputPeriod')?.value || '';
+      data.content = document.getElementById('inputContent')?.value || '';
+      data.reserver = document.getElementById('inputReserver')?.value || '';
+
+      if (!data.content.trim()) {
+        showErrorToast('授業・内容を入力してください');
+        return;
+      }
+    }
+
+    showLoading(true);
+    modal.hide();
+
+    console.log('Submitting form:', { category: cat, data });
+
+    google.script.run
+      .withSuccessHandler(function() {
+        showSuccessToast(MESSAGE.SAVE_SUCCESS);
+        loadData();
+      })
+      .withFailureHandler(function(error) {
+        console.error('Save error:', error);
+        showErrorToast(`${MESSAGE.SAVE_ERROR}: ${error.message || error}`);
+        showLoading(false);
+      })
+      .saveData(cat, data);
+
+  } catch (e) {
+    console.error('submitForm error:', e);
+    showErrorToast(MESSAGE.SAVE_ERROR);
+    showLoading(false);
+  }
 }
 
+/**
+ * データを削除
+ * @param {string} id - データID
+ * @param {string} category - カテゴリ
+ * @param {string} name - 表示名
+ */
 function deleteItem(id, category, name) {
-  if(!confirm(`「${name}」を削除しますか？`)) return;
+  if (!confirm(`「${name}」を削除しますか？`)) return;
+
   showLoading(true);
-  google.script.run.withSuccessHandler(loadData).withFailureHandler(onFailure).deleteEvent(id, category);
+  console.log('Deleting item:', { id, category, name });
+
+  google.script.run
+    .withSuccessHandler(function() {
+      showSuccessToast(MESSAGE.DELETE_SUCCESS);
+      loadData();
+    })
+    .withFailureHandler(function(error) {
+      console.error('Delete error:', error);
+      showErrorToast(`${MESSAGE.DELETE_ERROR}: ${error.message || error}`);
+      showLoading(false);
+    })
+    .deleteEvent(id, category);
 }
 
+/**
+ * 教室予約の上書きを削除（固定設定に戻す）
+ * @param {string} id - データID
+ * @param {string} content - 内容
+ */
 function deleteOverride(id, content) {
-  if(!confirm(`「${content}」の設定を削除し、固定設定に戻しますか？`)) return;
+  if (!confirm(`「${content}」の設定を削除し、固定設定に戻しますか？`)) return;
+
   showLoading(true);
-  google.script.run.withSuccessHandler(loadData).withFailureHandler(onFailure).deleteEvent(id, 'room');
+  console.log('Deleting override:', { id, content });
+
+  google.script.run
+    .withSuccessHandler(function() {
+      showSuccessToast(MESSAGE.DELETE_SUCCESS);
+      loadData();
+    })
+    .withFailureHandler(function(error) {
+      console.error('Delete override error:', error);
+      showErrorToast(`${MESSAGE.DELETE_ERROR}: ${error.message || error}`);
+      showLoading(false);
+    })
+    .deleteEvent(id, 'room');
 }
 
+/**
+ * 行事情報をクリップボードにコピー
+ */
 function copyDailyInfo() {
-  let text = `【${document.getElementById('displayDate').innerText}】\n`;
-  const items = currentData.daily || [];
-  if(items.length === 0) text += "予定なし";
-  else items.forEach(d => text += `・${d.time ? d.time + ' ' : ''}${d.content} ${d.note ? '('+d.note+')' : ''}\n`);
-  navigator.clipboard.writeText(text).then(() => alert('コピーしました'));
-}
+  try {
+    let text = `【${document.getElementById('displayDate').innerText}】\n`;
+    const items = currentData.daily || [];
 
-function showLoading(b) { document.getElementById('loading').style.display = b ? 'flex' : 'none'; }
-function onFailure(e) { alert('Error: ' + e); showLoading(false); }
+    if (items.length === 0) {
+      text += "予定なし";
+    } else {
+      items.forEach(d => {
+        const time = d.time ? d.time + ' ' : '';
+        const note = d.note ? '(' + d.note + ')' : '';
+        text += `・${time}${d.content} ${note}\n`;
+      });
+    }
+
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        showSuccessToast(MESSAGE.COPY_SUCCESS);
+      })
+      .catch((error) => {
+        console.error('Copy error:', error);
+        showErrorToast(MESSAGE.COPY_ERROR);
+      });
+  } catch (e) {
+    console.error('copyDailyInfo error:', e);
+    showErrorToast(MESSAGE.COPY_ERROR);
+  }
+}
 </script>
