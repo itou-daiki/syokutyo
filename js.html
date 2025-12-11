@@ -321,6 +321,8 @@
                        <option value="grade">学年で絞り込み</option>
                        <option value="dept">分掌で絞り込み</option>
                        <option value="subject">教科で絞り込み</option>
+                       <option value="role_type">役割で絞り込み</option>
+                       <option value="chief_type">主任で絞り込み</option>
                      </select>
                    </div>
                    <div class="mb-2" id="subFilterContainer" style="display:none;">
@@ -428,13 +430,24 @@
     const subSelect = document.getElementById('subFilterSelect');
     const listContainer = document.getElementById('userCheckList');
 
+    // Reset UI
+    subContainer.style.display = 'none';
+
     if (type === 'all') {
-      subContainer.style.display = 'none';
       renderCheckList(staffList);
     } else {
       subContainer.style.display = 'block';
-      // Get unique values
-      const values = [...new Set(staffList.map(s => s[type]).filter(v => v))].sort();
+
+      let values = [];
+      if (type === 'dept') {
+        // Collect all departments from the depts array
+        const allDepts = staffList.flatMap(s => s.depts);
+        values = [...new Set(allDepts.filter(v => v))].sort();
+      } else {
+        // Simple property filter (grade, subject, role_type, chief_type)
+        values = [...new Set(staffList.map(s => s[type]).filter(v => v))].sort();
+      }
+
       subSelect.innerHTML = '<option value="">選択してください</option>' + values.map(v => `<option value="${v}">${v}</option>`).join('');
       listContainer.innerHTML = '<div class="text-muted text-center">フィルタを選択してください</div>';
     }
@@ -445,10 +458,18 @@
     const val = document.getElementById('subFilterSelect').value;
     if (!val) return;
 
-    const filtered = staffList.filter(s => s[type] === val);
+    let filtered = [];
+
+    if (type === 'dept') {
+      // Check if selected dept is included in the staff's depts array
+      filtered = staffList.filter(s => s.depts && s.depts.includes(val));
+    } else {
+      // Exact match for Grade, Subject, RoleType, ChiefType
+      filtered = staffList.filter(s => s[type] === val);
+    }
+
     renderCheckList(filtered);
   }
-
   function renderCheckList(list) {
     const container = document.getElementById('userCheckList');
     container.innerHTML = list.map(s => `

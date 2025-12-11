@@ -339,10 +339,13 @@ function getRowsFixedCols(sheetName, colCount) {
 function getStaffData() {
   try {
     const rows = getRows(SHEETS.STAFF);
-    // 0:id, 1:name, 2:role, 3:order, 4:email, 5:grade, 6:dept, 7:subject
+    // 0:id, 1:name, 2:role, 3:order, 4:email, 5:grade, 6:dept1, 7:dept2, 8:dept3, 9:subject, 10:role_type, 11:chief_type
     return rows.map(r => ({
       id: r[0] || '', name: r[1] || '', role: r[2] || '', order: r[3] || 999, email: r[4] || '',
-      grade: r[5] || '', dept: r[6] || '', subject: r[7] || ''
+      grade: r[5] || '', subject: r[9] || '',
+      depts: [r[6], r[7], r[8]].filter(d => d && d.toString().trim() !== ''), // Combine Depts
+      role_type: r[10] || '',  // 担任, 副担任, 学年所属, 管理職
+      chief_type: r[11] || ''  // 学年主任, 分掌主任 etc
     })).filter(s => s.name).sort((a, b) => a.order - b.order);
   } catch (e) { return []; }
 }
