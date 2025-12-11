@@ -245,6 +245,24 @@ function saveData(category, data) {
 
     } else {
       // 新規追加処理
+
+      // taskの場合、assignees（複数人）への一括登録をハンドル
+      if (category === 'task' && data.assignees && Array.isArray(data.assignees)) {
+        // assigneesリストの数だけ行を追加
+        const rowsToAdd = data.assignees.map(name => {
+          const newId = Utilities.getUuid();
+          // id, name, roll, content, due_date, check
+          return [newId, name, data.roll || '', data.content, data.due_date || '', 0];
+        });
+
+        // 複数行一括追加 (appendRowは1行ずつなのでループするか、getRange().setValuesを使う)
+        // ここではappendRowループで実装（大量ではない前提）
+        rowsToAdd.forEach(row => sheet.appendRow(row));
+
+        return { success: true, message: `${rowsToAdd.length}件のタスクを一括登録しました` };
+      }
+
+      // 通常の単一行追加
       const newRow = [id, ...rowData];
       sheet.appendRow(newRow);
       return { success: true, message: 'データを保存しました', id: id };
@@ -264,7 +282,9 @@ function toggleTaskCheck(id, isChecked) {
     for (let i = 1; i < data.length; i++) {
       if (data[i][0] == id) {
         // checkカラムは6列目(index 5)
-        sheet.getRange(i + 1, 6).setValue(isChecked);
+        // 0=未着手, 1=着手中, 2=完了 (数値として保存)
+        const newVal = parseInt(isChecked);
+        sheet.getRange(i + 1, 6).setValue(isNaN(newVal) ? 0 : newVal);
         return { success: true };
       }
     }
@@ -319,8 +339,11 @@ function getRowsFixedCols(sheetName, colCount) {
 function getStaffData() {
   try {
     const rows = getRows(SHEETS.STAFF);
-    return rows.map(r => ({ id: r[0] || '', name: r[1] || '', role: r[2] || '', order: r[3] || 999, email: r[4] || '' }))
-      .filter(s => s.name).sort((a, b) => a.order - b.order);
+    // 0:id, 1:name, 2:role, 3:order, 4:email, 5:grade, 6:dept, 7:subject
+    return rows.map(r => ({
+      id: r[0] || '', name: r[1] || '', role: r[2] || '', order: r[3] || 999, email: r[4] || '',
+      grade: r[5] || '', dept: r[6] || '', subject: r[7] || ''
+    })).filter(s => s.name).sort((a, b) => a.order - b.order);
   } catch (e) { return []; }
 }
 function formatDate(dateObj) {

@@ -1,184 +1,184 @@
 <script>
-/**
- * 職員朝礼伝達システム - Frontend Logic (v10.2)
- * Robust Initialization
- */
+  /**
+   * 職員朝礼伝達システム - Frontend Logic (v10.2)
+   * Robust Initialization
+   */
 
-let currentDate = new Date();
-let currentData = {};
-let staffList = [];
-let modal = null;
-let currentUser = localStorage.getItem('syokutyo_user') || '';
+  let currentDate = new Date();
+  let currentData = {};
+  let staffList = [];
+  let modal = null;
+  let currentUser = localStorage.getItem('syokutyo_user') || '';
 
-const CONFIG = {
-  ROOMS: ['選択1', '選択2', '選択3', '選択4', 'PC室', '会議室', '視聴覚室'],
-  PERIODS: ['1限', '2限', '3限', '4限', '昼', '5限', '6限', '放課後'],
-  DAYS_OF_WEEK: ['日', '月', '火', '水', '木', '金', '土']
-};
+  const CONFIG = {
+    ROOMS: ['選択1', '選択2', '選択3', '選択4', 'PC室', '会議室', '視聴覚室'],
+    PERIODS: ['1限', '2限', '3限', '4限', '昼', '5限', '6限', '放課後'],
+    DAYS_OF_WEEK: ['日', '月', '火', '水', '木', '金', '土']
+  };
 
-// 初期化：エラーがあっても日付セットだけは進める
-window.onload = function() {
-  try {
-    const modalEl = document.getElementById('entryModal');
-    if (modalEl && typeof bootstrap !== 'undefined') {
-      modal = new bootstrap.Modal(modalEl);
-    } else {
-      console.warn('Bootstrap Modal init skipped or failed.');
+  // 初期化：エラーがあっても日付セットだけは進める
+  window.onload = function () {
+    try {
+      const modalEl = document.getElementById('entryModal');
+      if (modalEl && typeof bootstrap !== 'undefined') {
+        modal = new bootstrap.Modal(modalEl);
+      } else {
+        console.warn('Bootstrap Modal init skipped or failed.');
+      }
+    } catch (e) {
+      console.error('Modal init error:', e);
+    } finally {
+      // モーダルの初期化成否に関わらず、日付セットとデータ読み込みを実行
+      setToday();
     }
-  } catch (e) {
-    console.error('Modal init error:', e);
-  } finally {
-    // モーダルの初期化成否に関わらず、日付セットとデータ読み込みを実行
-    setToday();
+  };
+
+  // =============================================================================
+  // ユーザー管理
+  // =============================================================================
+  function updateStaffSelect() {
+    const select = document.getElementById('currentUserSelect');
+    if (!select) return;
+    select.innerHTML = '<option value="">(全員表示)</option>' +
+      staffList.map(s => `<option value="${s.name}" ${s.name === currentUser ? 'selected' : ''}>${s.name}</option>`).join('');
+
+    if (currentData.tasks) renderTaskList(currentData.tasks);
   }
-};
 
-// =============================================================================
-// ユーザー管理
-// =============================================================================
-function updateStaffSelect() {
-  const select = document.getElementById('currentUserSelect');
-  if(!select) return;
-  select.innerHTML = '<option value="">(全員表示)</option>' + 
-    staffList.map(s => `<option value="${s.name}" ${s.name===currentUser?'selected':''}>${s.name}</option>`).join('');
-  
-  if (currentData.tasks) renderTaskList(currentData.tasks);
-}
-
-function changeCurrentUser() {
-  currentUser = document.getElementById('currentUserSelect').value;
-  localStorage.setItem('syokutyo_user', currentUser);
-  if (currentData.tasks) renderTaskList(currentData.tasks);
-}
-
-// =============================================================================
-// データ操作
-// =============================================================================
-function loadData() {
-  const loading = document.getElementById('loading');
-  if(loading) loading.style.display = 'flex';
-  
-  // 日付ピッカーから値を取得。もし空なら現在日時で補填
-  let datePicker = document.getElementById('datePicker');
-  if (!datePicker.value) {
-    const d = new Date();
-    datePicker.value = `${d.getFullYear()}-${('0'+(d.getMonth()+1)).slice(-2)}-${('0'+d.getDate()).slice(-2)}`;
+  function changeCurrentUser() {
+    currentUser = document.getElementById('currentUserSelect').value;
+    localStorage.setItem('syokutyo_user', currentUser);
+    if (currentData.tasks) renderTaskList(currentData.tasks);
   }
-  
-  google.script.run
-    .withSuccessHandler(onDataLoaded)
-    .withFailureHandler(onFailure)
-    .getData(datePicker.value);
-}
 
-function onDataLoaded(json) {
-  try {
-    const data = JSON.parse(json);
-    currentData = data;
-    staffList = data.staff;
-    
-    // サーバー側でユーザー特定できた場合、それを優先
-    if (data.currentUser) {
-      currentUser = data.currentUser;
-      localStorage.setItem('syokutyo_user', currentUser);
-    }
-    
-    updateStaffSelect();
-    
-    updateHeader(currentDate, data.today.daily.length, 'headerTodayInfo');
-    const tmr = new Date(currentDate); tmr.setDate(tmr.getDate()+1);
-    updateHeader(tmr, data.tomorrow.daily.length, 'headerTomorrowInfo');
-    
-    renderDailyList(data.today.daily, 'dailyList');
-    renderDailyList(data.tomorrow.daily, 'dailyListTomorrow');
-    
-    renderMeetings(data.today.meetings, 'meetingListMain');
-    document.getElementById('headerMeetingInfo').textContent = `${data.today.counts.meeting}件`;
-    
-    renderSimpleList('tripList', data.today.trips, 'trip', 'headerTripInfo');
-    renderSimpleList('leaveList', data.today.leaves, 'leave', 'headerLeaveInfo');
-    
-    renderAnnouncements('announceStaffList', data.today.announcements_staff, 'announce');
-    renderAnnouncements('announceStudentList', data.today.announcements_student, 'announce');
-    
-    renderTaskList(data.tasks);
-    renderRoomMatrix(data.today.reservations);
-    
-    loadWeather();
-  } catch(e) { console.error(e); }
-  finally {
+  // =============================================================================
+  // データ操作
+  // =============================================================================
+  function loadData() {
     const loading = document.getElementById('loading');
-    if(loading) loading.style.display = 'none';
+    if (loading) loading.style.display = 'flex';
+
+    // 日付ピッカーから値を取得。もし空なら現在日時で補填
+    let datePicker = document.getElementById('datePicker');
+    if (!datePicker.value) {
+      const d = new Date();
+      datePicker.value = `${d.getFullYear()}-${('0' + (d.getMonth() + 1)).slice(-2)}-${('0' + d.getDate()).slice(-2)}`;
+    }
+
+    google.script.run
+      .withSuccessHandler(onDataLoaded)
+      .withFailureHandler(onFailure)
+      .getData(datePicker.value);
   }
-}
 
-function updateHeader(d, c, id) {
-  const el = document.getElementById(id);
-  if(el) {
-    const day = CONFIG.DAYS_OF_WEEK[d.getDay()];
-    el.textContent = `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} (${day})　${c}件`;
+  function onDataLoaded(json) {
+    try {
+      const data = JSON.parse(json);
+      currentData = data;
+      staffList = data.staff;
+
+      // サーバー側でユーザー特定できた場合、それを優先
+      if (data.currentUser) {
+        currentUser = data.currentUser;
+        localStorage.setItem('syokutyo_user', currentUser);
+      }
+
+      updateStaffSelect();
+
+      updateHeader(currentDate, data.today.daily.length, 'headerTodayInfo');
+      const tmr = new Date(currentDate); tmr.setDate(tmr.getDate() + 1);
+      updateHeader(tmr, data.tomorrow.daily.length, 'headerTomorrowInfo');
+
+      renderDailyList(data.today.daily, 'dailyList');
+      renderDailyList(data.tomorrow.daily, 'dailyListTomorrow');
+
+      renderMeetings(data.today.meetings, 'meetingListMain');
+      document.getElementById('headerMeetingInfo').textContent = `${data.today.counts.meeting}件`;
+
+      renderSimpleList('tripList', data.today.trips, 'trip', 'headerTripInfo');
+      renderSimpleList('leaveList', data.today.leaves, 'leave', 'headerLeaveInfo');
+
+      renderAnnouncements('announceStaffList', data.today.announcements_staff, 'announce');
+      renderAnnouncements('announceStudentList', data.today.announcements_student, 'announce');
+
+      renderTaskList(data.tasks);
+      renderRoomMatrix(data.today.reservations);
+
+      loadWeather();
+    } catch (e) { console.error(e); }
+    finally {
+      const loading = document.getElementById('loading');
+      if (loading) loading.style.display = 'none';
+    }
   }
-}
 
-// =============================================================================
-// 日付操作
-// =============================================================================
-function setToday() {
-  currentDate = new Date();
-  updateDatePicker();
-  loadData();
-}
-
-function changeDate(d) {
-  currentDate.setDate(currentDate.getDate() + d);
-  updateDatePicker();
-  loadData();
-}
-
-function updateDatePicker() {
-  const datePicker = document.getElementById('datePicker');
-  const navDisplay = document.getElementById('navDateDisplay');
-  
-  if (!datePicker) return;
-
-  const y = currentDate.getFullYear();
-  const m = ('0' + (currentDate.getMonth() + 1)).slice(-2);
-  const d = ('0' + currentDate.getDate()).slice(-2);
-  const dateStr = `${y}-${m}-${d}`;
-  
-  datePicker.value = dateStr;
-  
-  if (navDisplay) {
-    // 日付表示を更新 (例: 2025/12/11)
-    navDisplay.textContent = `${y}/${parseInt(m)}/${parseInt(d)}`;
+  function updateHeader(d, c, id) {
+    const el = document.getElementById(id);
+    if (el) {
+      const day = CONFIG.DAYS_OF_WEEK[d.getDay()];
+      el.textContent = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} (${day})　${c}件`;
+    }
   }
-}
 
-function onDatePickerChange() {
-  const datePicker = document.getElementById('datePicker');
-  if (!datePicker || !datePicker.value) return;
-  currentDate = new Date(datePicker.value);
-  
-  // 表示用ラベルも更新
-  const navDisplay = document.getElementById('navDateDisplay');
-  if(navDisplay) {
+  // =============================================================================
+  // 日付操作
+  // =============================================================================
+  function setToday() {
+    currentDate = new Date();
+    updateDatePicker();
+    loadData();
+  }
+
+  function changeDate(d) {
+    currentDate.setDate(currentDate.getDate() + d);
+    updateDatePicker();
+    loadData();
+  }
+
+  function updateDatePicker() {
+    const datePicker = document.getElementById('datePicker');
+    const navDisplay = document.getElementById('navDateDisplay');
+
+    if (!datePicker) return;
+
+    const y = currentDate.getFullYear();
+    const m = ('0' + (currentDate.getMonth() + 1)).slice(-2);
+    const d = ('0' + currentDate.getDate()).slice(-2);
+    const dateStr = `${y}-${m}-${d}`;
+
+    datePicker.value = dateStr;
+
+    if (navDisplay) {
+      // 日付表示を更新 (例: 2025/12/11)
+      navDisplay.textContent = `${y}/${parseInt(m)}/${parseInt(d)}`;
+    }
+  }
+
+  function onDatePickerChange() {
+    const datePicker = document.getElementById('datePicker');
+    if (!datePicker || !datePicker.value) return;
+    currentDate = new Date(datePicker.value);
+
+    // 表示用ラベルも更新
+    const navDisplay = document.getElementById('navDateDisplay');
+    if (navDisplay) {
       const parts = datePicker.value.split('-');
       navDisplay.textContent = `${parts[0]}/${parseInt(parts[1])}/${parseInt(parts[2])}`;
+    }
+    loadData();
   }
-  loadData();
-}
 
-// =============================================================================
-// レンダリング
-// =============================================================================
-function renderDailyList(items, id) {
-  const list = document.getElementById(id);
-  list.innerHTML = items.length ? '' : '<li class="list-group-item text-center text-muted">予定なし</li>';
-  items.sort((a,b)=>(a.time||'').localeCompare(b.time||''));
-  items.forEach(d => {
-    const editBtn = `<button class="btn btn-sm text-primary" onclick='openEditModal("daily", ${JSON.stringify(d)})'><i class="bi bi-pencil-square"></i></button>`;
-    const delBtn = `<button class="btn btn-sm text-danger" onclick="deleteItem('${d.id}','daily','${escapeHtml(d.content)}')"><i class="bi bi-trash"></i></button>`;
-    list.innerHTML += `
+  // =============================================================================
+  // レンダリング
+  // =============================================================================
+  function renderDailyList(items, id) {
+    const list = document.getElementById(id);
+    list.innerHTML = items.length ? '' : '<li class="list-group-item text-center text-muted">予定なし</li>';
+    items.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    items.forEach(d => {
+      const editBtn = `<button class="btn btn-sm text-primary" onclick='openEditModal("daily", ${JSON.stringify(d)})'><i class="bi bi-pencil-square"></i></button>`;
+      const delBtn = `<button class="btn btn-sm text-danger" onclick="deleteItem('${d.id}','daily','${escapeHtml(d.content)}')"><i class="bi bi-trash"></i></button>`;
+      list.innerHTML += `
       <li class="list-group-item">
         <div>
           <span class="fw-bold text-primary me-2">${escapeHtml(d.time)}</span>
@@ -187,168 +187,278 @@ function renderDailyList(items, id) {
         </div>
         <div class="btn-action-group">${editBtn}${delBtn}</div>
       </li>`;
-  });
-}
+    });
+  }
 
-function renderMeetings(items, id) {
-  const list = document.getElementById(id);
-  list.innerHTML = items.length ? '' : '<tr><td colspan="3" class="text-center text-muted py-3">予定なし</td></tr>';
-  items.forEach(m => {
-    if(m.is_fixed) {
-      list.innerHTML += `<tr class="table-light text-muted"><td><i class="bi bi-arrow-repeat"></i> ${escapeHtml(m.name)}</td><td>${escapeHtml(m.time)}</td><td>${escapeHtml(m.place)}</td></tr>`;
-    } else {
-      const btns = `<button class="btn btn-sm text-primary p-0 me-2" onclick='openEditModal("meeting", ${JSON.stringify(m)})'><i class="bi bi-pencil-square"></i></button>
-                    <button class="btn btn-sm text-danger p-0" onclick="deleteItem('${m.id}','meeting','${escapeHtml(m.name)}')"><i class="bi bi-trash"></i></button>`;
-      list.innerHTML += `<tr><td>${escapeHtml(m.name)}</td><td>${escapeHtml(m.time)}</td><td><div class="d-flex justify-content-between"><span>${escapeHtml(m.place)}</span><div class="btn-action-group">${btns}</div></div></td></tr>`;
-    }
-  });
-}
-
-function renderSimpleList(id, items, cat, headerId) {
-  const el = document.getElementById(headerId); if(el) el.textContent = items.length + '件';
-  const list = document.getElementById(id);
-  list.innerHTML = items.length ? '' : '<li class="list-group-item text-center text-muted">予定なし</li>';
-  items.forEach(i => {
-    const main = i.staff_name;
-    const sub = cat==='trip' ? `${i.location} (${i.purpose})` : i.type;
-    const btns = `<button class="btn btn-sm text-primary p-0 me-2" onclick='openEditModal("${cat}", ${JSON.stringify(i)})'><i class="bi bi-pencil-square"></i></button>
-                  <button class="btn btn-sm text-danger p-0" onclick="deleteItem('${i.id}','${cat}','${escapeHtml(main)}')"><i class="bi bi-trash"></i></button>`;
-    list.innerHTML += `<li class="list-group-item"><div class="w-100"><div class="d-flex justify-content-between mb-1"><span class="fw-bold">${escapeHtml(main)}</span><span class="badge bg-light text-dark border">${escapeHtml(i.time)}</span></div><div class="d-flex justify-content-between small"><span class="text-muted">${escapeHtml(sub)}</span><div class="btn-action-group">${btns}</div></div></div></li>`;
-  });
-}
-
-function renderAnnouncements(id, items, cat) {
-  const list = document.getElementById(id);
-  list.innerHTML = items.length ? '' : '<li class="list-group-item text-center text-muted">なし</li>';
-  items.forEach(a => {
-    const prio = a.priority==='◎' ? '<span class="text-danger fw-bold">【重要】</span> ' : '';
-    const btns = `<button class="btn btn-sm text-primary p-0 me-2" onclick='openEditModal("announce", ${JSON.stringify(a)})'><i class="bi bi-pencil-square"></i></button>
-                  <button class="btn btn-sm text-danger p-0" onclick="deleteItem('${a.id}','announce','伝達事項')"><i class="bi bi-trash"></i></button>`;
-    list.innerHTML += `<li class="list-group-item"><div class="w-100"><div class="d-flex justify-content-between mb-1"><span class="badge bg-light text-dark border">${escapeHtml(a.target)}</span><small class="text-muted">${escapeHtml(a.reporter)}</small></div><div class="mb-2">${prio}${escapeHtml(a.content)}</div><div class="text-end btn-action-group">${btns}</div></div></li>`;
-  });
-}
-
-function renderTaskList(tasks) {
-  const list = document.getElementById('taskList');
-  const filtered = currentUser ? tasks.filter(t => t.name === currentUser) : tasks;
-  const el = document.getElementById('headerTaskInfo'); if(el) el.textContent = `${filtered.length}件` + (currentUser ? ` (${currentUser})` : '');
-  list.innerHTML = filtered.length ? '' : '<li class="list-group-item text-center text-muted py-4">タスクなし</li>';
-  filtered.forEach(t => {
-    const checkIcon = t.check ? 'bi-check-circle-fill text-success' : 'bi-circle text-muted';
-    const contentClass = t.check ? 'task-content task-done' : 'task-content';
-    const btns = `<button class="btn btn-sm text-primary p-0 me-2" onclick='openEditModal("task", ${JSON.stringify(t)})'><i class="bi bi-pencil-square"></i></button>
-                  <button class="btn btn-sm text-danger p-0" onclick="deleteItem('${t.id}','task','${escapeHtml(t.content)}')"><i class="bi bi-trash"></i></button>`;
-    list.innerHTML += `<li class="list-group-item task-item"><i class="bi ${checkIcon} fs-4 task-check" onclick="toggleTask('${t.id}', ${!t.check})"></i><div class="${contentClass}"><div class="fw-bold">${escapeHtml(t.content)}</div><div class="task-meta">${escapeHtml(t.name)} | 期限: ${escapeHtml(t.due_date)}</div></div><div class="btn-action-group">${btns}</div></li>`;
-  });
-}
-
-function renderRoomMatrix(reservations) {
-  const tbody = document.querySelector('#roomTable tbody');
-  const thead = document.querySelector('#roomTable thead');
-  let headHtml = '<tr><th class="bg-light"></th>';
-  CONFIG.PERIODS.forEach(p => headHtml += `<th>${p}</th>`);
-  thead.innerHTML = headHtml + '</tr>';
-  let bodyHtml = '';
-  CONFIG.ROOMS.forEach(room => {
-    bodyHtml += `<tr><th>${room}</th>`;
-    CONFIG.PERIODS.forEach(period => {
-      const nr = reservations.find(r => r.room===room && r.period===period && !r.is_fixed);
-      const fr = reservations.find(r => r.room===room && r.period===period && r.is_fixed);
-      if(nr) {
-        const content = nr.content==='中止' ? '<span class="cell-cancelled">中止</span>' : nr.content;
-        bodyHtml += `<td class="cell-occupied" onclick='openEditModal("room", ${JSON.stringify(nr)})'><div>${content}</div><div class="small">${escapeHtml(nr.reserver)}</div></td>`;
-      } else if(fr) {
-        bodyHtml += `<td class="cell-fixed" onclick="openFixedRoomModal('${room}','${period}','${fr.content}','${fr.reserver}')"><div>${escapeHtml(fr.content)}</div></td>`;
+  function renderMeetings(items, id) {
+    const list = document.getElementById(id);
+    list.innerHTML = items.length ? '' : '<tr><td colspan="3" class="text-center text-muted py-3">予定なし</td></tr>';
+    items.forEach(m => {
+      if (m.is_fixed) {
+        list.innerHTML += `<tr class="table-light text-muted"><td><i class="bi bi-arrow-repeat"></i> ${escapeHtml(m.name)}</td><td>${escapeHtml(m.time)}</td><td>${escapeHtml(m.place)}</td></tr>`;
       } else {
-        bodyHtml += `<td onclick="openRoomModal('${room}','${period}')"></td>`;
+        const btns = `<button class="btn btn-sm text-primary p-0 me-2" onclick='openEditModal("meeting", ${JSON.stringify(m)})'><i class="bi bi-pencil-square"></i></button>
+                    <button class="btn btn-sm text-danger p-0" onclick="deleteItem('${m.id}','meeting','${escapeHtml(m.name)}')"><i class="bi bi-trash"></i></button>`;
+        list.innerHTML += `<tr><td>${escapeHtml(m.name)}</td><td>${escapeHtml(m.time)}</td><td><div class="d-flex justify-content-between"><span>${escapeHtml(m.place)}</span><div class="btn-action-group">${btns}</div></div></td></tr>`;
       }
     });
-    bodyHtml += '</tr>';
-  });
-  tbody.innerHTML = bodyHtml;
-}
-
-// Modal & Forms
-function openModal(cat, typeArg) { setupModalForm(cat, typeArg, null); if(modal) modal.show(); else alert('Modal機能は現在使用できません'); }
-function openEditModal(cat, data) { setupModalForm(cat, data.type || '', data); if(modal) modal.show(); }
-
-function setupModalForm(cat, typeArg, data) {
-  document.getElementById('entryCategory').value = cat;
-  document.getElementById('entryId').value = data ? data.id : '';
-  document.getElementById('announceType').value = typeArg || '';
-  const titleMap = { daily: '行事', meeting: '会議', trip: '出張', leave: '休暇', announce: '伝達事項', task: 'タスク', room: '教室予約' };
-  document.getElementById('modalTitle').innerText = (data ? '編集: ' : '登録: ') + titleMap[cat];
-  const staffOpts = '<option value="">選択</option>' + staffList.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
-  const val = (key) => data ? (data[key] || '') : '';
-  
-  let html = '';
-  if (cat === 'task') {
-    html = `<div class="mb-3"><label class="form-label">担当者</label><select id="inputName" class="form-select">${staffOpts}</select><div class="form-text">自分に追加する場合は自分の名前を選択</div></div>
-            <div class="mb-3"><label class="form-label">タスク内容</label><input type="text" id="inputContent" class="form-control" value="${val('content')}"></div>
-            <div class="mb-3"><label class="form-label">期限</label><input type="date" id="inputDueDate" class="form-control" value="${val('due_date')}"></div>`;
-    setTimeout(() => { if(data) document.getElementById('inputName').value = data.name; else document.getElementById('inputName').value = currentUser; }, 0);
-  } else if (cat === 'daily') {
-    html = `<div class="mb-3"><label>時間</label><input type="text" id="inputTime" class="form-control" value="${val('time')}"></div><div class="mb-3"><label>内容</label><input type="text" id="inputContent" class="form-control" value="${val('content')}"></div><div class="mb-3"><label>備考</label><input type="text" id="inputNote" class="form-control" value="${val('note')}"></div>`;
-  } else if (cat === 'meeting') {
-    html = `<div class="mb-3"><label>会議名</label><input type="text" id="inputName" class="form-control" value="${val('name')}"></div><div class="mb-3"><label>時間</label><input type="text" id="inputTime" class="form-control" value="${val('time')||'放課後'}"></div><div class="mb-3"><label>場所</label><input type="text" id="inputPlace" class="form-control" value="${val('place')||'会議室'}"></div>`;
-  } else if (cat === 'trip' || cat === 'leave') {
-    html = `<div class="mb-3"><label>職員</label><select id="inputStaff" class="form-select">${staffOpts}</select></div>`;
-    if(cat==='trip') html+=`<div class="mb-3"><label>用務</label><input type="text" id="inputPurpose" class="form-control" value="${val('purpose')}"></div><div class="mb-3"><label>場所</label><input type="text" id="inputLocation" class="form-control" value="${val('location')}"></div>`;
-    else html+=`<div class="mb-3"><label>種別</label><select id="inputType" class="form-select"><option>年休</option><option>振休</option><option>時間休</option><option>病休</option><option>夏季休暇</option><option>その他</option></select></div>`;
-    html+=`<div class="mb-3"><label>時間</label><input type="text" id="inputTime" class="form-control" value="${val('time')||'1日'}"></div>`;
-    setTimeout(() => { if(data) { document.getElementById('inputStaff').value = data.staff_name || data.staff; if(cat==='leave') document.getElementById('inputType').value = data.type; } }, 0);
-  } else if (cat === 'announce') {
-    const isPrio = val('priority') === '◎';
-    html = `<div class="mb-3"><label>重要度</label><div class="btn-group w-100"><input type="radio" class="btn-check" name="prio" id="p1" value="・" ${!isPrio?'checked':''}><label class="btn btn-outline-secondary" for="p1">通常</label><input type="radio" class="btn-check" name="prio" id="p2" value="◎" ${isPrio?'checked':''}><label class="btn btn-outline-danger" for="p2">重要</label></div></div>
-            <div class="mb-3"><label>対象</label><input type="text" id="inputTarget" class="form-control" value="${val('target')||(typeArg==='生徒'?'全学年':'全職員')}"></div><div class="mb-3"><label>内容</label><textarea id="inputContent" class="form-control" rows="3">${val('content')}</textarea></div><div class="mb-3"><label>報告者</label><select id="inputReporter" class="form-select">${staffOpts}</select></div>`;
-    setTimeout(() => { if(data) document.getElementById('inputReporter').value = data.reporter; }, 0);
-  } else if (cat === 'room') {
-    html = `<input type="hidden" id="inputRoom" value="${val('room')}"><input type="hidden" id="inputPeriod" value="${val('period')}"><div class="mb-3"><strong>${val('room')} - ${val('period')}</strong></div><div class="mb-3"><label>授業・内容</label><input type="text" id="inputContent" class="form-control" value="${val('content')}"></div><div class="mb-3"><label>予約者</label><select id="inputReserver" class="form-select">${staffOpts}</select></div>`;
-    setTimeout(() => { if(data) document.getElementById('inputReserver').value = data.reserver; }, 0);
   }
-  document.getElementById('formContent').innerHTML = html;
-}
 
-function openRoomModal(room, period) { openEditModal('room', { room: room, period: period, content: '', reserver: '' }); }
-function openFixedRoomModal(room, period, org, owner) {
-  document.getElementById('entryCategory').value = 'room'; document.getElementById('entryId').value = '';
-  const staffOpts = '<option value="">選択</option>' + staffList.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
-  document.getElementById('modalTitle').innerText = '教室変更（固定設定）';
-  document.getElementById('formContent').innerHTML = `<div class="alert alert-secondary mb-3"><small>通常: ${org} (${owner})</small></div><input type="hidden" id="inputRoom" value="${room}"><input type="hidden" id="inputPeriod" value="${period}"><div class="mb-3"><label>変更内容</label><div class="input-group"><input type="text" id="inputContent" class="form-control" value="${org}"><button type="button" class="btn btn-outline-danger" onclick="document.getElementById('inputContent').value='中止'">中止</button></div></div><div class="mb-3"><label>変更予約者</label><select id="inputReserver" class="form-select">${staffOpts}</select></div>`;
-  if(modal) modal.show();
-}
-
-function submitForm() {
-  const cat = document.getElementById('entryCategory').value;
-  const id = document.getElementById('entryId').value;
-  const data = { id: id, date: document.getElementById('datePicker').value };
-  
-  if(cat === 'task') {
-    data.name = document.getElementById('inputName').value; data.content = document.getElementById('inputContent').value; data.due_date = document.getElementById('inputDueDate').value;
-    if(!data.name || !data.content) return alert('担当者と内容を入力してください');
-  } else if(cat === 'daily') {
-    data.time = document.getElementById('inputTime').value; data.content = document.getElementById('inputContent').value; data.note = document.getElementById('inputNote').value;
-  } else if(cat === 'meeting') {
-    data.name = document.getElementById('inputName').value; data.time = document.getElementById('inputTime').value; data.place = document.getElementById('inputPlace').value;
-  } else if(cat === 'trip' || cat === 'leave') {
-    data.staff = document.getElementById('inputStaff').value; data.time = document.getElementById('inputTime').value;
-    if(cat === 'trip') { data.purpose = document.getElementById('inputPurpose').value; data.location = document.getElementById('inputLocation').value; }
-    else { data.type = document.getElementById('inputType').value; }
-  } else if(cat === 'announce') {
-    data.priority = document.querySelector('input[name="prio"]:checked').value; data.target = document.getElementById('inputTarget').value; data.content = document.getElementById('inputContent').value; data.reporter = document.getElementById('inputReporter').value; data.type = document.getElementById('announceType').value;
-  } else if(cat === 'room') {
-    data.room = document.getElementById('inputRoom').value; data.period = document.getElementById('inputPeriod').value; data.content = document.getElementById('inputContent').value; data.reserver = document.getElementById('inputReserver').value;
+  function renderSimpleList(id, items, cat, headerId) {
+    const el = document.getElementById(headerId); if (el) el.textContent = items.length + '件';
+    const list = document.getElementById(id);
+    list.innerHTML = items.length ? '' : '<li class="list-group-item text-center text-muted">予定なし</li>';
+    items.forEach(i => {
+      const main = i.staff_name;
+      const sub = cat === 'trip' ? `${i.location} (${i.purpose})` : i.type;
+      const btns = `<button class="btn btn-sm text-primary p-0 me-2" onclick='openEditModal("${cat}", ${JSON.stringify(i)})'><i class="bi bi-pencil-square"></i></button>
+                  <button class="btn btn-sm text-danger p-0" onclick="deleteItem('${i.id}','${cat}','${escapeHtml(main)}')"><i class="bi bi-trash"></i></button>`;
+      list.innerHTML += `<li class="list-group-item"><div class="w-100"><div class="d-flex justify-content-between mb-1"><span class="fw-bold">${escapeHtml(main)}</span><span class="badge bg-light text-dark border">${escapeHtml(i.time)}</span></div><div class="d-flex justify-content-between small"><span class="text-muted">${escapeHtml(sub)}</span><div class="btn-action-group">${btns}</div></div></div></li>`;
+    });
   }
-  
-  if(modal) modal.hide();
-  showLoading(true);
-  google.script.run.withSuccessHandler(() => loadData()).withFailureHandler(onFailure).saveData(cat, data);
-}
 
-function toggleTask(id, checked) { google.script.run.withSuccessHandler(() => loadData()).withFailureHandler(onFailure).toggleTaskCheck(id, checked); }
-function deleteItem(id, cat, name) { if(!confirm(`「${name}」を削除しますか？`)) return; showLoading(true); google.script.run.withSuccessHandler(() => loadData()).withFailureHandler(onFailure).deleteEvent(id, cat); }
-function onFailure(e) { alert('エラー: ' + e.message); showLoading(false); }
-function escapeHtml(t) { if(!t)return ''; return t.toString().replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m])); }
-function loadWeather() { google.script.run.withSuccessHandler(j=>{ try{const d=JSON.parse(j);document.getElementById('weatherInfo').innerHTML=`<i class="bi bi-sun-fill text-warning fs-4 me-1"></i><span class="fw-bold">${Math.round(d.current.temperature_2m)}°C</span>`}catch(e){}}).getWeatherData(); }
-function showLoading(b) { const l=document.getElementById('loading'); if(l) l.style.display = b?'flex':'none'; }
+  function renderAnnouncements(id, items, cat) {
+    const list = document.getElementById(id);
+    list.innerHTML = items.length ? '' : '<li class="list-group-item text-center text-muted">なし</li>';
+    items.forEach(a => {
+      const prio = a.priority === '◎' ? '<span class="text-danger fw-bold">【重要】</span> ' : '';
+      const btns = `<button class="btn btn-sm text-primary p-0 me-2" onclick='openEditModal("announce", ${JSON.stringify(a)})'><i class="bi bi-pencil-square"></i></button>
+                  <button class="btn btn-sm text-danger p-0" onclick="deleteItem('${a.id}','announce','伝達事項')"><i class="bi bi-trash"></i></button>`;
+      list.innerHTML += `<li class="list-group-item"><div class="w-100"><div class="d-flex justify-content-between mb-1"><span class="badge bg-light text-dark border">${escapeHtml(a.target)}</span><small class="text-muted">${escapeHtml(a.reporter)}</small></div><div class="mb-2">${prio}${escapeHtml(a.content)}</div><div class="text-end btn-action-group">${btns}</div></div></li>`;
+    });
+  }
+
+  function renderTaskList(tasks) {
+    const list = document.getElementById('taskList');
+    const filtered = currentUser ? tasks.filter(t => t.name === currentUser) : tasks;
+    const el = document.getElementById('headerTaskInfo'); if (el) el.textContent = `${filtered.length}件` + (currentUser ? ` (${currentUser})` : '');
+    list.innerHTML = filtered.length ? '' : '<li class="list-group-item text-center text-muted py-4">タスクなし</li>';
+    filtered.forEach(t => {
+      // 3-state logic: 0=未着手(circle), 1=着中(play/gear), 2=完了(check-circle-fill)
+      let iconClass = 'bi-circle text-muted';
+      let statusVal = parseInt(t.check);
+      if (isNaN(statusVal)) statusVal = (t.check === true || t.check === 'TRUE') ? 2 : 0; // 旧データ互換
+
+      if (statusVal === 1) iconClass = 'bi-play-circle-fill text-warning';
+      else if (statusVal === 2) iconClass = 'bi-check-circle-fill text-success';
+
+      const contentClass = statusVal === 2 ? 'task-content task-done' : 'task-content';
+      // const newStatus = (statusVal + 1) % 3; // Cycle 0->1->2->0
+
+      const btns = `<button class="btn btn-sm text-primary p-0 me-2" onclick='openEditModal("task", ${JSON.stringify(t)})'><i class="bi bi-pencil-square"></i></button>
+                  <button class="btn btn-sm text-danger p-0" onclick="deleteItem('${t.id}','task','${escapeHtml(t.content)}')"><i class="bi bi-trash"></i></button>`;
+
+      // Cycle status on click
+      list.innerHTML += `<li class="list-group-item task-item"><i class="bi ${iconClass} fs-4 task-check" onclick="cycleTaskStatus('${t.id}', ${statusVal})"></i><div class="${contentClass}"><div class="fw-bold">${escapeHtml(t.content)}</div><div class="task-meta">${escapeHtml(t.name)} | 期限: ${escapeHtml(t.due_date)}</div></div><div class="btn-action-group">${btns}</div></li>`;
+    });
+  }
+
+  function cycleTaskStatus(id, currentStatus) {
+    const nextStatus = (currentStatus + 1) % 3;
+    toggleTask(id, nextStatus);
+  }
+
+  function renderRoomMatrix(reservations) {
+    const tbody = document.querySelector('#roomTable tbody');
+    const thead = document.querySelector('#roomTable thead');
+    let headHtml = '<tr><th class="bg-light"></th>';
+    CONFIG.PERIODS.forEach(p => headHtml += `<th>${p}</th>`);
+    thead.innerHTML = headHtml + '</tr>';
+    let bodyHtml = '';
+    CONFIG.ROOMS.forEach(room => {
+      bodyHtml += `<tr><th>${room}</th>`;
+      CONFIG.PERIODS.forEach(period => {
+        const nr = reservations.find(r => r.room === room && r.period === period && !r.is_fixed);
+        const fr = reservations.find(r => r.room === room && r.period === period && r.is_fixed);
+        if (nr) {
+          const content = nr.content === '中止' ? '<span class="cell-cancelled">中止</span>' : nr.content;
+          bodyHtml += `<td class="cell-occupied" onclick='openEditModal("room", ${JSON.stringify(nr)})'><div>${content}</div><div class="small">${escapeHtml(nr.reserver)}</div></td>`;
+        } else if (fr) {
+          bodyHtml += `<td class="cell-fixed" onclick="openFixedRoomModal('${room}','${period}','${fr.content}','${fr.reserver}')"><div>${escapeHtml(fr.content)}</div></td>`;
+        } else {
+          bodyHtml += `<td onclick="openRoomModal('${room}','${period}')"></td>`;
+        }
+      });
+      bodyHtml += '</tr>';
+    });
+    tbody.innerHTML = bodyHtml;
+  }
+
+  // Modal & Forms
+  function openModal(cat, typeArg) { setupModalForm(cat, typeArg, null); if (modal) modal.show(); else alert('Modal機能は現在使用できません'); }
+  function openEditModal(cat, data) { setupModalForm(cat, data.type || '', data); if (modal) modal.show(); }
+
+  function setupModalForm(cat, typeArg, data) {
+    document.getElementById('entryCategory').value = cat;
+    document.getElementById('entryId').value = data ? data.id : '';
+    document.getElementById('announceType').value = typeArg || '';
+    const titleMap = { daily: '行事', meeting: '会議', trip: '出張', leave: '休暇', announce: '伝達事項', task: 'タスク', room: '教室予約' };
+    document.getElementById('modalTitle').innerText = (data ? '編集: ' : '登録: ') + titleMap[cat];
+    const staffOpts = '<option value="">選択</option>' + staffList.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+    const val = (key) => data ? (data[key] || '') : '';
+
+    let html = '';
+    if (cat === 'task') {
+      // 編集時は単体、新規時は複数選択UI
+      if (data) {
+        html = `<div class="mb-3"><label class="form-label">担当者</label><input type="text" class="form-control" value="${val('name')}" disabled></div>
+               <div class="mb-3"><label class="form-label">タスク内容</label><input type="text" id="inputContent" class="form-control" value="${val('content')}"></div>
+               <div class="mb-3"><label class="form-label">期限</label><input type="date" id="inputDueDate" class="form-control" value="${val('due_date')}"></div>`;
+      } else {
+        html = `<ul class="nav nav-tabs mb-3" id="taskTab" role="tablist">
+                <li class="nav-item"><button class="nav-link active" id="self-tab" data-bs-toggle="tab" data-bs-target="#self" type="button" role="tab">自分</button></li>
+                <li class="nav-item"><button class="nav-link" id="others-tab" data-bs-toggle="tab" data-bs-target="#others" type="button" role="tab">他人・グループ</button></li>
+               </ul>
+               <div class="tab-content" id="taskTabContent">
+                 <div class="tab-pane fade show active" id="self" role="tabpanel">
+                   <p class="text-muted small">自分自身のタスクとして登録します。</p>
+                   <input type="hidden" id="taskTargetType" value="self">
+                 </div>
+                 <div class="tab-pane fade" id="others" role="tabpanel">
+                   <div class="mb-2">
+                     <select class="form-select" id="filterType" onchange="updateTaskUserList()">
+                       <option value="all">全員 (名前順)</option>
+                       <option value="grade">学年で絞り込み</option>
+                       <option value="dept">分掌で絞り込み</option>
+                       <option value="subject">教科で絞り込み</option>
+                     </select>
+                   </div>
+                   <div class="mb-2" id="subFilterContainer" style="display:none;">
+                     <select class="form-select" id="subFilterSelect" onchange="applyTaskUserFilter()"></select>
+                   </div>
+                   <div class="border rounded p-2" style="max-height: 150px; overflow-y: auto;" id="userCheckList">
+                     <!-- Checkboxes generated here -->
+                   </div>
+                   <div class="d-flex justify-content-end mt-1"><button type="button" class="btn btn-xs btn-outline-primary" onclick="toggleAllTaskUsers(true)">全選択</button><button type="button" class="btn btn-xs btn-outline-secondary ms-1" onclick="toggleAllTaskUsers(false)">全解除</button></div>
+                   <input type="hidden" id="taskTargetType" value="others">
+                 </div>
+               </div>
+               <hr>
+               <div class="mb-3"><label class="form-label">タスク内容</label><input type="text" id="inputContent" class="form-control" value=""></div>
+               <div class="mb-3"><label class="form-label">期限</label><input type="date" id="inputDueDate" class="form-control" value=""></div>`;
+
+        // Initialize list
+        setTimeout(updateTaskUserList, 100);
+      }
+    } else if (cat === 'daily') {
+      html = `<div class="mb-3"><label>時間</label><input type="text" id="inputTime" class="form-control" value="${val('time')}"></div><div class="mb-3"><label>内容</label><input type="text" id="inputContent" class="form-control" value="${val('content')}"></div><div class="mb-3"><label>備考</label><input type="text" id="inputNote" class="form-control" value="${val('note')}"></div>`;
+    } else if (cat === 'meeting') {
+      html = `<div class="mb-3"><label>会議名</label><input type="text" id="inputName" class="form-control" value="${val('name')}"></div><div class="mb-3"><label>時間</label><input type="text" id="inputTime" class="form-control" value="${val('time') || '放課後'}"></div><div class="mb-3"><label>場所</label><input type="text" id="inputPlace" class="form-control" value="${val('place') || '会議室'}"></div>`;
+    } else if (cat === 'trip' || cat === 'leave') {
+      html = `<div class="mb-3"><label>職員</label><select id="inputStaff" class="form-select">${staffOpts}</select></div>`;
+      if (cat === 'trip') html += `<div class="mb-3"><label>用務</label><input type="text" id="inputPurpose" class="form-control" value="${val('purpose')}"></div><div class="mb-3"><label>場所</label><input type="text" id="inputLocation" class="form-control" value="${val('location')}"></div>`;
+      else html += `<div class="mb-3"><label>種別</label><select id="inputType" class="form-select"><option>年休</option><option>振休</option><option>時間休</option><option>病休</option><option>夏季休暇</option><option>その他</option></select></div>`;
+      html += `<div class="mb-3"><label>時間</label><input type="text" id="inputTime" class="form-control" value="${val('time') || '1日'}"></div>`;
+      setTimeout(() => { if (data) { document.getElementById('inputStaff').value = data.staff_name || data.staff; if (cat === 'leave') document.getElementById('inputType').value = data.type; } }, 0);
+    } else if (cat === 'announce') {
+      const isPrio = val('priority') === '◎';
+      html = `<div class="mb-3"><label>重要度</label><div class="btn-group w-100"><input type="radio" class="btn-check" name="prio" id="p1" value="・" ${!isPrio ? 'checked' : ''}><label class="btn btn-outline-secondary" for="p1">通常</label><input type="radio" class="btn-check" name="prio" id="p2" value="◎" ${isPrio ? 'checked' : ''}><label class="btn btn-outline-danger" for="p2">重要</label></div></div>
+            <div class="mb-3"><label>対象</label><input type="text" id="inputTarget" class="form-control" value="${val('target') || (typeArg === '生徒' ? '全学年' : '全職員')}"></div><div class="mb-3"><label>内容</label><textarea id="inputContent" class="form-control" rows="3">${val('content')}</textarea></div><div class="mb-3"><label>報告者</label><select id="inputReporter" class="form-select">${staffOpts}</select></div>`;
+      setTimeout(() => { if (data) document.getElementById('inputReporter').value = data.reporter; }, 0);
+    } else if (cat === 'room') {
+      html = `<input type="hidden" id="inputRoom" value="${val('room')}"><input type="hidden" id="inputPeriod" value="${val('period')}"><div class="mb-3"><strong>${val('room')} - ${val('period')}</strong></div><div class="mb-3"><label>授業・内容</label><input type="text" id="inputContent" class="form-control" value="${val('content')}"></div><div class="mb-3"><label>予約者</label><select id="inputReserver" class="form-select">${staffOpts}</select></div>`;
+      setTimeout(() => { if (data) document.getElementById('inputReserver').value = data.reserver; }, 0);
+    }
+    document.getElementById('formContent').innerHTML = html;
+  }
+
+  function openRoomModal(room, period) { openEditModal('room', { room: room, period: period, content: '', reserver: '' }); }
+  function openFixedRoomModal(room, period, org, owner) {
+    document.getElementById('entryCategory').value = 'room'; document.getElementById('entryId').value = '';
+    const staffOpts = '<option value="">選択</option>' + staffList.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+    document.getElementById('modalTitle').innerText = '教室変更（固定設定）';
+    document.getElementById('formContent').innerHTML = `<div class="alert alert-secondary mb-3"><small>通常: ${org} (${owner})</small></div><input type="hidden" id="inputRoom" value="${room}"><input type="hidden" id="inputPeriod" value="${period}"><div class="mb-3"><label>変更内容</label><div class="input-group"><input type="text" id="inputContent" class="form-control" value="${org}"><button type="button" class="btn btn-outline-danger" onclick="document.getElementById('inputContent').value='中止'">中止</button></div></div><div class="mb-3"><label>変更予約者</label><select id="inputReserver" class="form-select">${staffOpts}</select></div>`;
+    if (modal) modal.show();
+  }
+
+  function submitForm() {
+    const cat = document.getElementById('entryCategory').value;
+    const id = document.getElementById('entryId').value;
+    const data = { id: id, date: document.getElementById('datePicker').value };
+
+    if (cat === 'task') {
+      data.content = document.getElementById('inputContent').value; data.due_date = document.getElementById('inputDueDate').value;
+
+      // 新規登録時のロジック分岐
+      if (!id) { // New
+        const targetType = document.getElementById('taskTargetType') ? document.getElementById('taskTargetType').value : 'self'; // tab support
+        if (targetType === 'self') {
+          data.assignees = [currentUser];
+        } else {
+          // Collect checked users
+          const checks = document.querySelectorAll('#userCheckList input[type="checkbox"]:checked');
+          data.assignees = Array.from(checks).map(c => c.value);
+          if (data.assignees.length === 0) return alert('対象者が選択されていません');
+        }
+      } else {
+        // Edit mode (single task)
+        // data.name is ignored/readonly
+      }
+
+      if (!data.content) return alert('内容を入力してください');
+    } else if (cat === 'daily') {
+      data.time = document.getElementById('inputTime').value; data.content = document.getElementById('inputContent').value; data.note = document.getElementById('inputNote').value;
+    } else if (cat === 'meeting') {
+      data.name = document.getElementById('inputName').value; data.time = document.getElementById('inputTime').value; data.place = document.getElementById('inputPlace').value;
+    } else if (cat === 'trip' || cat === 'leave') {
+      data.staff = document.getElementById('inputStaff').value; data.time = document.getElementById('inputTime').value;
+      if (cat === 'trip') { data.purpose = document.getElementById('inputPurpose').value; data.location = document.getElementById('inputLocation').value; }
+      else { data.type = document.getElementById('inputType').value; }
+    } else if (cat === 'announce') {
+      data.priority = document.querySelector('input[name="prio"]:checked').value; data.target = document.getElementById('inputTarget').value; data.content = document.getElementById('inputContent').value; data.reporter = document.getElementById('inputReporter').value; data.type = document.getElementById('announceType').value;
+    } else if (cat === 'room') {
+      data.room = document.getElementById('inputRoom').value; data.period = document.getElementById('inputPeriod').value; data.content = document.getElementById('inputContent').value; data.reserver = document.getElementById('inputReserver').value;
+    }
+
+    if (modal) modal.hide();
+    showLoading(true);
+    google.script.run.withSuccessHandler(() => loadData()).withFailureHandler(onFailure).saveData(cat, data);
+  }
+
+  function toggleTask(id, checked) { google.script.run.withSuccessHandler(() => loadData()).withFailureHandler(onFailure).toggleTaskCheck(id, checked); }
+  function deleteItem(id, cat, name) { if (!confirm(`「${name}」を削除しますか？`)) return; showLoading(true); google.script.run.withSuccessHandler(() => loadData()).withFailureHandler(onFailure).deleteEvent(id, cat); }
+  function onFailure(e) { alert('エラー: ' + e.message); showLoading(false); }
+  function escapeHtml(t) { if (!t) return ''; return t.toString().replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m])); }
+  function loadWeather() { google.script.run.withSuccessHandler(j => { try { const d = JSON.parse(j); document.getElementById('weatherInfo').innerHTML = `<i class="bi bi-sun-fill text-warning fs-4 me-1"></i><span class="fw-bold">${Math.round(d.current.temperature_2m)}°C</span>` } catch (e) { } }).getWeatherData(); }
+  function showLoading(b) { const l = document.getElementById('loading'); if (l) l.style.display = b ? 'flex' : 'none'; }
+  // Helper for Task Filtering UI
+  function updateTaskUserList() {
+    const type = document.getElementById('filterType').value;
+    const subContainer = document.getElementById('subFilterContainer');
+    const subSelect = document.getElementById('subFilterSelect');
+    const listContainer = document.getElementById('userCheckList');
+
+    if (type === 'all') {
+      subContainer.style.display = 'none';
+      renderCheckList(staffList);
+    } else {
+      subContainer.style.display = 'block';
+      // Get unique values
+      const values = [...new Set(staffList.map(s => s[type]).filter(v => v))].sort();
+      subSelect.innerHTML = '<option value="">選択してください</option>' + values.map(v => `<option value="${v}">${v}</option>`).join('');
+      listContainer.innerHTML = '<div class="text-muted text-center">フィルタを選択してください</div>';
+    }
+  }
+
+  function applyTaskUserFilter() {
+    const type = document.getElementById('filterType').value;
+    const val = document.getElementById('subFilterSelect').value;
+    if (!val) return;
+
+    const filtered = staffList.filter(s => s[type] === val);
+    renderCheckList(filtered);
+  }
+
+  function renderCheckList(list) {
+    const container = document.getElementById('userCheckList');
+    container.innerHTML = list.map(s => `
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" value="${s.name}" id="chk_${s.id}">
+      <label class="form-check-label" for="chk_${s.id}">${s.name}</label>
+    </div>`).join('');
+  }
+
+  function toggleAllTaskUsers(b) {
+    document.querySelectorAll('#userCheckList input[type="checkbox"]').forEach(c => c.checked = b);
+  }
 </script>
