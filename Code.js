@@ -137,7 +137,7 @@ function getDataForDate(dateStr) {
 
   // 6. 教室予約
   const nr = getRowsFixedCols(SHEETS.ROOM, 6).filter(r => formatDate(r[1]) === dateStr)
-    .map(r => ({ id: r[0], date: r[1], room: r[2] || '', period: r[3] || '', content: r[4] || '', reserver: r[5] || '', is_fixed: false }));
+    .map(r => ({ id: r[0], date: r[1], room: r[3] || '', period: r[2] || '', content: r[4] || '', reserver: r[5] || '', is_fixed: false }));
   const fr = getRowsFixedCols(SHEETS.FIXED_CLASS, 5).filter(r => r[0] === dayOfWeek)
     .map(r => ({ id: 'fixed', date: dateStr, period: r[1] || '', room: r[2] || '', content: r[3] || '', reserver: r[4] || '', is_fixed: true }));
   result.reservations = [...fr, ...nr];
@@ -197,7 +197,7 @@ function saveData(category, data) {
         break;
       case 'room':
         sheetName = SHEETS.ROOM;
-        rowData = [data.date, data.room, data.period, data.content, data.reserver || ''];
+        rowData = [data.date, data.period, data.room, data.content, data.reserver || ''];
         break;
       case 'task':
         sheetName = SHEETS.TASK;
