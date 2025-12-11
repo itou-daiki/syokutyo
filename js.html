@@ -85,22 +85,25 @@ function changeDate(delta) {
  * 日付ピッカーを更新
  */
 function updateDatePicker() {
+  const datePicker = document.getElementById('datePicker');
+  if (!datePicker) return;
+
   const y = currentDate.getFullYear();
   const m = ('0' + (currentDate.getMonth() + 1)).slice(-2);
   const d = ('0' + currentDate.getDate()).slice(-2);
-  document.getElementById('datePicker').value = `${y}-${m}-${d}`;
+  datePicker.value = `${y}-${m}-${d}`;
 }
 
-// 日付ピッカーのイベントリスナー
-document.addEventListener('DOMContentLoaded', function() {
+/**
+ * 日付ピッカーの変更イベント
+ */
+function onDatePickerChange() {
   const datePicker = document.getElementById('datePicker');
-  if (datePicker) {
-    datePicker.addEventListener('change', function() {
-      currentDate = new Date(this.value);
-      loadData();
-    });
-  }
-});
+  if (!datePicker || !datePicker.value) return;
+
+  currentDate = new Date(datePicker.value);
+  loadData();
+}
 
 // =============================================================================
 // ユーティリティ関数
@@ -306,37 +309,58 @@ function onFailure(error) {
 // =============================================================================
 
 /**
- * 天気予報を読み込む（Open-Meteo API使用）
+ * 天気予報を読み込む（サーバーサイド経由）
  */
 function loadWeather() {
   const weatherEl = document.getElementById('weatherInfo');
 
-  fetch(`https://api.open-meteo.com/v1/forecast?latitude=${CONFIG.HITA_LAT}&longitude=${CONFIG.HITA_LON}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=Asia/Tokyo&forecast_days=2`)
-    .then(response => response.json())
-    .then(data => {
-      console.log('Weather data loaded:', data);
-      renderWeather(data);
-    })
-    .catch(error => {
-      console.error('Weather API error:', error);
-      weatherEl.innerHTML = `
-        <div class="text-muted">
-          <i class="bi bi-exclamation-triangle fs-3 d-block mb-2"></i>
-          <small>天気情報の取得に失敗しました</small>
-        </div>
-      `;
-    });
+  try {
+    google.script.run
+      .withSuccessHandler(function(weatherJson) {
+        try {
+          const data = JSON.parse(weatherJson);
+          console.log('Weather data loaded:', data);
+          renderWeather(data);
+        } catch (e) {
+          console.error('Weather data parse error:', e);
+          weatherEl.innerHTML = `
+            <div class="text-muted">
+              <i class="bi bi-exclamation-triangle fs-3 d-block mb-2"></i>
+              <small>天気情報の解析に失敗しました</small>
+            </div>
+          `;
+        }
+      })
+      .withFailureHandler(function(error) {
+        console.error('Weather API error:', error);
+        weatherEl.innerHTML = `
+          <div class="text-muted">
+            <i class="bi bi-exclamation-triangle fs-3 d-block mb-2"></i>
+            <small>天気情報の取得に失敗しました</small>
+          </div>
+        `;
+      })
+      .getWeatherData();
+  } catch (e) {
+    console.error('loadWeather error:', e);
+    weatherEl.innerHTML = `
+      <div class="text-muted">
+        <i class="bi bi-exclamation-triangle fs-3 d-block mb-2"></i>
+        <small>天気情報の取得に失敗しました</small>
+      </div>
+    `;
+  }
 }
 
 /**
- * 天気予報を表示
+ * 天気予報を表示（ナビゲーションバー用コンパクト版）
  * @param {Object} data - Open-Meteo APIからのデータ
  */
 function renderWeather(data) {
   const weatherEl = document.getElementById('weatherInfo');
 
   if (!data || !data.current || !data.daily) {
-    weatherEl.innerHTML = '<div class="text-muted"><small>天気情報がありません</small></div>';
+    weatherEl.innerHTML = '<small class="text-muted">天気情報なし</small>';
     return;
   }
 
@@ -345,37 +369,13 @@ function renderWeather(data) {
 
   // 天気アイコンを取得
   const weatherIcon = getWeatherIcon(current.weather_code);
-  const todayIcon = getWeatherIcon(today.weather_code[0]);
-  const tomorrowIcon = getWeatherIcon(today.weather_code[1]);
 
+  // コンパクトな表示（ナビゲーションバー用）
   weatherEl.innerHTML = `
-    <div class="row g-3">
-      <!-- 現在の天気 -->
-      <div class="col-md-12">
-        <div class="d-flex align-items-center justify-content-center gap-3 py-2">
-          <i class="bi ${weatherIcon}" style="font-size: 3rem; color: #F39C12;"></i>
-          <div>
-            <div style="font-size: 2.5rem; font-weight: 700;">${Math.round(current.temperature_2m)}°C</div>
-            <div class="text-muted"><small>現在</small></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 本日と明日の予報 -->
-      <div class="col-md-6">
-        <div class="text-center p-2 rounded" style="background: var(--color-gray-50);">
-          <div class="text-muted mb-1"><small>本日</small></div>
-          <i class="bi ${todayIcon} fs-3 d-block mb-1" style="color: #F39C12;"></i>
-          <div class="fw-bold">${Math.round(today.temperature_2m_max[0])}° / ${Math.round(today.temperature_2m_min[0])}°</div>
-        </div>
-      </div>
-      <div class="col-md-6">
-        <div class="text-center p-2 rounded" style="background: var(--color-gray-50);">
-          <div class="text-muted mb-1"><small>明日</small></div>
-          <i class="bi ${tomorrowIcon} fs-3 d-block mb-1" style="color: #5DADE2;"></i>
-          <div class="fw-bold">${Math.round(today.temperature_2m_max[1])}° / ${Math.round(today.temperature_2m_min[1])}°</div>
-        </div>
-      </div>
+    <i class="bi ${weatherIcon}" style="font-size: 1.5rem; color: #F39C12;"></i>
+    <div class="d-flex flex-column" style="line-height: 1.2;">
+      <span style="font-size: 1.1rem; font-weight: 700;">${Math.round(current.temperature_2m)}°C</span>
+      <small class="text-muted" style="font-size: 0.75rem;">日田市</small>
     </div>
   `;
 }
@@ -457,7 +457,12 @@ function renderDailyList(items, listId = 'dailyList', countId = 'dailyCount') {
       const contentSafe = escapeHtml(d.content);
 
       const deleteButton = showDeleteButton ? `
-        <button class="btn btn-sm text-danger opacity-50 btn-icon" onclick="deleteItem('${d.id}', 'daily', '${contentSafe}')" title="削除">
+        <button class="btn btn-sm text-danger opacity-50 btn-icon"
+                onclick="deleteItemById(this)"
+                data-id="${escapeHtml(d.id)}"
+                data-category="daily"
+                data-name="${contentSafe}"
+                title="削除">
           <i class="bi bi-trash"></i>
         </button>
       ` : '';
@@ -586,7 +591,12 @@ function renderAnnouncements(id, items, cat) {
                 <i class="bi bi-person-circle me-1"></i>${escapeHtml(a.reporter)}
               </small>
             </div>
-            <button class="btn btn-sm text-danger opacity-25 btn-icon p-0" onclick="deleteItem('${a.id}', '${cat}', 'この伝達事項')" title="削除">
+            <button class="btn btn-sm text-danger opacity-25 btn-icon p-0"
+                    onclick="deleteItemById(this)"
+                    data-id="${escapeHtml(a.id)}"
+                    data-category="${cat}"
+                    data-name="この伝達事項"
+                    title="削除">
               <i class="bi bi-x-circle-fill fs-5"></i>
             </button>
           </div>

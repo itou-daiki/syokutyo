@@ -565,3 +565,40 @@ function formatDate(dateObj) {
     return "";
   }
 }
+
+// =============================================================================
+// 天気予報API
+// =============================================================================
+
+/**
+ * 天気予報データを取得（Open-Meteo API）
+ * @returns {string} JSON形式の天気データ
+ */
+function getWeatherData() {
+  try {
+    logInfo('getWeatherData', 'Fetching weather data for Hita');
+
+    // 日田市の座標
+    const HITA_LAT = 33.3219;
+    const HITA_LON = 130.9414;
+
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${HITA_LAT}&longitude=${HITA_LON}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=Asia/Tokyo&forecast_days=2`;
+
+    const response = UrlFetchApp.fetch(url, {
+      muteHttpExceptions: true
+    });
+
+    const statusCode = response.getResponseCode();
+    if (statusCode !== 200) {
+      throw new Error(`天気APIエラー: HTTPステータス ${statusCode}`);
+    }
+
+    const weatherData = response.getContentText();
+    logInfo('getWeatherData', 'Weather data fetched successfully');
+
+    return weatherData;
+  } catch (e) {
+    logError('getWeatherData', e);
+    throw new Error(`天気情報の取得に失敗しました: ${e.message}`);
+  }
+}
