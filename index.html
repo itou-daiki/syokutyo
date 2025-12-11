@@ -19,16 +19,16 @@
   </div>
 
   <!-- Navigation Bar -->
-  <nav class="navbar navbar-expand-md sticky-top">
-    <div class="container-fluid" style="max-width: 1400px; display: flex; align-items: center; justify-content: space-between;">
+  <nav class="navbar sticky-top">
+    <div class="container-fluid d-flex align-items-center justify-content-between">
       <!-- Brand -->
-      <a class="navbar-brand" href="#" style="display: flex; align-items: center; gap: 0.5rem; margin-right: auto;">
+      <a class="navbar-brand d-flex align-items-center" href="#" style="gap: 0.5rem;">
         <i class="bi bi-journal-text"></i>
-        朝礼伝達システム
+        <span>朝礼伝達システム</span>
       </a>
 
       <!-- Date Navigation & Weather -->
-      <div class="d-flex align-items-center gap-2">
+      <div class="d-flex align-items-center" style="gap: 0.5rem; flex-wrap: nowrap;">
         <!-- Date Controls -->
         <button class="btn" onclick="changeDate(-1)" title="前日">
           <i class="bi bi-chevron-left"></i>
@@ -39,13 +39,13 @@
         <button class="btn" onclick="changeDate(1)" title="翌日">
           <i class="bi bi-chevron-right"></i>
         </button>
-        <input type="date" id="datePicker" class="form-control" style="width: auto;" onchange="onDatePickerChange()">
+        <input type="date" id="datePicker" class="form-control" onchange="onDatePickerChange()">
         <button class="btn btn-outline-primary" onclick="loadData()" title="更新">
           <i class="bi bi-arrow-clockwise"></i>
         </button>
 
         <!-- Weather Info (Compact) -->
-        <div id="weatherInfo" class="d-none d-xl-flex align-items-center gap-2" style="padding: 0.5rem 1rem; background: var(--color-gray-50); border-radius: var(--radius-sm); margin-left: 1rem;">
+        <div id="weatherInfo" class="d-none d-xl-flex align-items-center" style="gap: 0.5rem; padding: 0.5rem 1rem; background: var(--color-gray-50); border-radius: 6px; margin-left: 0.5rem; white-space: nowrap;">
           <div class="spinner-border spinner-border-sm text-warning" role="status">
             <span class="visually-hidden">読み込み中...</span>
           </div>
