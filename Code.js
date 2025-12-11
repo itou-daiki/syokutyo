@@ -156,14 +156,15 @@ function getDataForDate(dateStr) {
 }
 
 function getTasks() {
-  // タスク: id, name, roll, content, due_date, check
+  // タスク: id, name, roll, content, due_date, check, detail
   return getRows(SHEETS.TASK).map(r => ({
     id: r[0],
     name: r[1] || '',
     roll: r[2] || '',
     content: r[3] || '',
     due_date: formatDate(r[4]),
-    check: r[5] === true || r[5] === 'TRUE'
+    check: r[5] === true || r[5] === 'TRUE',
+    detail: r[6] || ''
   }));
 }
 
@@ -211,8 +212,8 @@ function saveData(category, data) {
         break;
       case 'task':
         sheetName = SHEETS.TASK;
-        // id, name, roll, content, due_date, check
-        rowData = [data.name, data.roll || '', data.content, data.due_date || '', data.check || false];
+        // id, name, roll, content, due_date, check, detail
+        rowData = [data.name, data.roll || '', data.content, data.due_date || '', data.check || false, data.detail || ''];
         break;
     }
 
@@ -251,8 +252,8 @@ function saveData(category, data) {
         // assigneesリストの数だけ行を追加
         const rowsToAdd = data.assignees.map(name => {
           const newId = Utilities.getUuid();
-          // id, name, roll, content, due_date, check
-          return [newId, name, data.roll || '', data.content, data.due_date || '', 0];
+          // id, name, roll, content, due_date, check, detail
+          return [newId, name, data.roll || '', data.content, data.due_date || '', 0, data.detail || ''];
         });
 
         // 複数行一括追加 (appendRowは1行ずつなのでループするか、getRange().setValuesを使う)

@@ -249,8 +249,24 @@
                   <button class="btn btn-sm text-danger p-0" onclick="deleteItem('${t.id}','task','${escapeHtml(t.content)}')"><i class="bi bi-trash"></i></button>`;
 
       // Cycle status on click
-      list.innerHTML += `<li class="list-group-item task-item"><i class="bi ${iconClass} fs-4 task-check" onclick="cycleTaskStatus('${t.id}', ${statusVal})"></i><div class="${contentClass}"><div class="fw-bold">${escapeHtml(t.content)}</div><div class="task-meta">${escapeHtml(t.name)} | 期限: ${escapeHtml(t.due_date)}</div></div><div class="btn-action-group">${btns}</div></li>`;
+      const detailBtn = t.detail ? `<span class="ms-2 text-primary" style="cursor:pointer;" onclick='showTaskDetail(${JSON.stringify(t)})'><i class="bi bi-info-circle"></i> 詳細</span>` : '';
+
+      list.innerHTML += `<li class="list-group-item task-item"><i class="bi ${iconClass} fs-4 task-check" onclick="cycleTaskStatus('${t.id}', ${statusVal})"></i><div class="${contentClass}"><div class="fw-bold">${escapeHtml(t.content)}</div><div class="task-meta">${escapeHtml(t.name)} | 期限: ${escapeHtml(t.due_date)}${detailBtn}</div></div><div class="btn-action-group">${btns}</div></li>`;
     });
+  }
+
+  function showTaskDetail(t) {
+    const modal = new bootstrap.Modal(document.getElementById('infoModal'));
+    document.getElementById('infoModalTitle').textContent = 'タスク詳細';
+    document.getElementById('infoModalBody').innerHTML = `
+      <div class="mb-2"><strong>内容:</strong> ${escapeHtml(t.content)}</div>
+      <div class="mb-2"><strong>担当者:</strong> ${escapeHtml(t.name)}</div>
+      <div class="mb-2"><strong>期限:</strong> ${escapeHtml(t.due_date)}</div>
+      <div class="mb-2"><strong>ステータス:</strong> ${t.check === true || t.check === 'TRUE' || t.check == 2 ? '完了' : (t.check == 1 ? '着手中' : '未着手')}</div>
+      <hr>
+      <div><strong>詳細:</strong><br><pre class="text-wrap">${escapeHtml(t.detail)}</pre></div>
+    `;
+    modal.show();
   }
 
   function cycleTaskStatus(id, currentStatus) {
@@ -303,7 +319,8 @@
       if (data) {
         html = `<div class="mb-3"><label class="form-label">担当者</label><input type="text" class="form-control" value="${val('name')}" disabled></div>
                <div class="mb-3"><label class="form-label">タスク内容</label><input type="text" id="inputContent" class="form-control" value="${val('content')}"></div>
-               <div class="mb-3"><label class="form-label">期限</label><input type="date" id="inputDueDate" class="form-control" value="${val('due_date')}"></div>`;
+               <div class="mb-3"><label class="form-label">期限</label><input type="date" id="inputDueDate" class="form-control" value="${val('due_date')}"></div>
+               <div class="mb-3"><label class="form-label">詳細</label><textarea id="inputDetail" class="form-control" rows="3">${val('detail')}</textarea></div>`;
       } else {
         html = `<ul class="nav nav-tabs mb-3" id="taskTab" role="tablist">
                 <li class="nav-item"><button class="nav-link active" id="self-tab" data-bs-toggle="tab" data-bs-target="#self" type="button" role="tab">自分</button></li>
@@ -337,7 +354,8 @@
                </div>
                <hr>
                <div class="mb-3"><label class="form-label">タスク内容</label><input type="text" id="inputContent" class="form-control" value=""></div>
-               <div class="mb-3"><label class="form-label">期限</label><input type="date" id="inputDueDate" class="form-control" value=""></div>`;
+               <div class="mb-3"><label class="form-label">期限</label><input type="date" id="inputDueDate" class="form-control" value=""></div>
+               <div class="mb-3"><label class="form-label">詳細</label><textarea id="inputDetail" class="form-control" rows="3"></textarea></div>`;
 
         // Initialize list
         setTimeout(updateTaskUserList, 100);
@@ -380,6 +398,7 @@
 
     if (cat === 'task') {
       data.content = document.getElementById('inputContent').value; data.due_date = document.getElementById('inputDueDate').value;
+      data.detail = document.getElementById('inputDetail').value; // Get Detail
 
       // 新規登録時のロジック分岐
       if (!id) { // New

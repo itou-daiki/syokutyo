@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
   <base target="_top">
   <meta charset="utf-8">
@@ -9,6 +10,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
   <?!= include('css'); ?>
 </head>
+
 <body>
 
   <div id="loading" class="loading-overlay" style="display: none;">
@@ -22,7 +24,7 @@
           <i class="bi bi-journal-text"></i>
           <span class="d-none d-sm-inline">朝礼伝達</span>
         </a>
-        
+
         <div class="user-select-capsule d-none d-md-flex">
           <i class="bi bi-person-circle text-secondary me-2"></i>
           <select id="currentUserSelect" onchange="changeCurrentUser()">
@@ -33,21 +35,23 @@
 
       <div class="date-controller position-relative">
         <button class="btn-nav-arrow" onclick="changeDate(-1)">＜</button>
-        
+
         <label for="datePicker" id="navDateDisplay" style="cursor: pointer; min-width: 140px; text-align: center;">
           Loading...
         </label>
-        
+
         <button class="btn-nav-arrow" onclick="changeDate(1)">＞</button>
 
-        <input type="date" id="datePicker" 
-               style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10;" 
-               onchange="onDatePickerChange()">
+        <input type="date" id="datePicker"
+          style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10;"
+          onchange="onDatePickerChange()">
       </div>
 
       <div class="d-flex align-items-center gap-2">
-        <button class="btn btn-sm btn-outline-secondary rounded-circle" style="width:36px;height:36px;" onclick="setToday()" title="今日"><i class="bi bi-calendar-event"></i></button>
-        <button class="btn btn-sm btn-outline-primary rounded-circle" style="width:36px;height:36px;" onclick="loadData()" title="更新"><i class="bi bi-arrow-clockwise"></i></button>
+        <button class="btn btn-sm btn-outline-secondary rounded-circle" style="width:36px;height:36px;"
+          onclick="setToday()" title="今日"><i class="bi bi-calendar-event"></i></button>
+        <button class="btn btn-sm btn-outline-primary rounded-circle" style="width:36px;height:36px;"
+          onclick="loadData()" title="更新"><i class="bi bi-arrow-clockwise"></i></button>
         <div id="weatherInfo"></div>
       </div>
     </div>
@@ -64,7 +68,8 @@
               <span>本日の行事</span>
               <span id="headerTodayInfo" class="header-meta"></span>
             </div>
-            <button class="btn btn-sm btn-light text-primary" onclick="openModal('daily')"><i class="bi bi-plus-lg"></i></button>
+            <button class="btn btn-sm btn-light text-primary" onclick="openModal('daily')"><i
+                class="bi bi-plus-lg"></i></button>
           </div>
           <div class="card-body p-0 card-body-scroll">
             <ul class="list-group list-group-flush" id="dailyList"></ul>
@@ -97,7 +102,8 @@
               <span>本日の会議</span>
               <span id="headerMeetingInfo" class="header-meta"></span>
             </div>
-            <button class="btn btn-sm btn-light text-secondary" onclick="openModal('meeting')"><i class="bi bi-plus-lg"></i></button>
+            <button class="btn btn-sm btn-light text-secondary" onclick="openModal('meeting')"><i
+                class="bi bi-plus-lg"></i></button>
           </div>
           <div class="card-body p-0 card-body-scroll">
             <div class="table-responsive">
@@ -117,7 +123,8 @@
               <span>タスク</span>
               <span id="headerTaskInfo" class="header-meta">0件</span>
             </div>
-            <button class="btn btn-sm btn-light text-warning" onclick="openModal('task')"><i class="bi bi-plus-lg"></i></button>
+            <button class="btn btn-sm btn-light text-warning" onclick="openModal('task')"><i
+                class="bi bi-plus-lg"></i></button>
           </div>
           <div class="card-body p-0 card-body-scroll">
             <ul class="list-group list-group-flush" id="taskList">
@@ -136,7 +143,8 @@
               <i class="bi bi-megaphone-fill"></i>
               <span>伝達事項（職員）</span>
             </div>
-            <button class="btn btn-sm btn-light text-danger" onclick="openModal('announce', '職員')"><i class="bi bi-plus-lg"></i></button>
+            <button class="btn btn-sm btn-light text-danger" onclick="openModal('announce', '職員')"><i
+                class="bi bi-plus-lg"></i></button>
           </div>
           <div class="card-body p-0 card-body-scroll">
             <ul class="list-group list-group-flush" id="announceStaffList"></ul>
@@ -150,7 +158,8 @@
               <i class="bi bi-broadcast"></i>
               <span>伝達事項（生徒）</span>
             </div>
-            <button class="btn btn-sm btn-light text-info" onclick="openModal('announce', '生徒')"><i class="bi bi-plus-lg"></i></button>
+            <button class="btn btn-sm btn-light text-info" onclick="openModal('announce', '生徒')"><i
+                class="bi bi-plus-lg"></i></button>
           </div>
           <div class="card-body p-0 card-body-scroll">
             <ul class="list-group list-group-flush" id="announceStudentList"></ul>
@@ -168,7 +177,8 @@
               <span>出張</span>
               <span id="headerTripInfo" class="header-meta"></span>
             </div>
-            <button class="btn btn-sm btn-light text-success" onclick="openModal('trip')"><i class="bi bi-plus-lg"></i></button>
+            <button class="btn btn-sm btn-light text-success" onclick="openModal('trip')"><i
+                class="bi bi-plus-lg"></i></button>
           </div>
           <div class="card-body p-0 card-body-scroll">
             <ul class="list-group list-group-flush" id="tripList"></ul>
@@ -183,7 +193,8 @@
               <span>休暇</span>
               <span id="headerLeaveInfo" class="header-meta"></span>
             </div>
-            <button class="btn btn-sm btn-light text-secondary" onclick="openModal('leave')"><i class="bi bi-plus-lg"></i></button>
+            <button class="btn btn-sm btn-light text-secondary" onclick="openModal('leave')"><i
+                class="bi bi-plus-lg"></i></button>
           </div>
           <div class="card-body p-0 card-body-scroll">
             <ul class="list-group list-group-flush" id="leaveList"></ul>
@@ -234,7 +245,23 @@
     </div>
   </div>
 
+  <div class="modal fade" id="infoModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content shadow-lg">
+        <div class="modal-header bg-white">
+          <h5 class="modal-title fw-bold" id="infoModalTitle">詳細</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-4 text-start" id="infoModalBody"></div>
+        <div class="modal-footer bg-white border-0">
+          <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">閉じる</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <?!= include('js'); ?>
 </body>
+
 </html>
