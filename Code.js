@@ -35,7 +35,7 @@ const ERROR_MESSAGES = {
 // ユーティリティ関数 (変更なし)
 // =============================================================================
 function getSS() {
-  try { return SpreadsheetApp.openById(SPREADSHEET_ID); } 
+  try { return SpreadsheetApp.openById(SPREADSHEET_ID); }
   catch (e) { logError('getSS', e); throw new Error('スプレッドシートを開けませんでした'); }
 }
 function logError(fn, e) { console.error(`[${fn}] Error:`, e.message, e.stack); }
@@ -72,7 +72,7 @@ function getData(dateStr) {
     if (!isValidDate(dateStr)) throw new Error(ERROR_MESSAGES.INVALID_DATE);
 
     const todayData = getDataForDate(dateStr);
-    
+
     // 明日
     const tomorrow = new Date(dateStr);
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -109,37 +109,37 @@ function getDataForDate(dateStr) {
 
   // 1. 行事
   result.daily = getRows(SHEETS.DAILY).filter(r => formatDate(r[1]) === dateStr)
-    .map(r => ({ id: r[0], date: r[1], time: r[2]||'', content: r[3]||'', note: r[4]||'' }));
+    .map(r => ({ id: r[0], date: r[1], time: r[2] || '', content: r[3] || '', note: r[4] || '' }));
 
   // 2. 出張
   result.trips = getRows(SHEETS.TRIP).filter(r => formatDate(r[1]) === dateStr)
-    .map(r => ({ id: r[0], date: r[1], staff_name: r[2]||'', purpose: r[3]||'', location: r[4]||'', time: r[5]||'', note: r[6]||'' }));
+    .map(r => ({ id: r[0], date: r[1], staff_name: r[2] || '', purpose: r[3] || '', location: r[4] || '', time: r[5] || '', note: r[6] || '' }));
   result.counts.trip = result.trips.length;
 
   // 3. 休暇
   result.leaves = getRows(SHEETS.LEAVE).filter(r => formatDate(r[1]) === dateStr)
-    .map(r => ({ id: r[0], date: r[1], staff_name: r[2]||'', type: r[3]||'', time: r[4]||'', note: r[5]||'' }));
+    .map(r => ({ id: r[0], date: r[1], staff_name: r[2] || '', type: r[3] || '', time: r[4] || '', note: r[5] || '' }));
   result.counts.leave = result.leaves.length;
 
   // 4. 会議
   const nm = getRows(SHEETS.MEETING).filter(r => formatDate(r[1]) === dateStr)
-    .map(r => ({ id: r[0], date: r[1], name: r[2]||'', time: r[3]||'', place: r[4]||'', is_fixed: false }));
+    .map(r => ({ id: r[0], date: r[1], name: r[2] || '', time: r[3] || '', place: r[4] || '', is_fixed: false }));
   const fm = getRows(SHEETS.FIXED_MEETING).filter(r => r[0] === dayOfWeek)
-    .map(r => ({ id: 'fixed', date: dateStr, name: r[1]||'', time: r[2]||'', place: r[3]||'', is_fixed: true }));
+    .map(r => ({ id: 'fixed', date: dateStr, name: r[2] || '', time: r[1] || '', place: r[3] || '', is_fixed: true }));
   result.meetings = [...fm, ...nm];
   result.counts.meeting = result.meetings.length;
 
   // 5. 伝達事項
   const aa = getRows(SHEETS.ANNOUNCE).filter(r => formatDate(r[1]) === dateStr)
-    .map(r => ({ id: r[0], date: r[1], type: r[2]||'', priority: r[3]||'', target: r[4]||'', content: r[5]||'', reporter: r[6]||'' }));
+    .map(r => ({ id: r[0], date: r[1], type: r[2] || '', priority: r[3] || '', target: r[4] || '', content: r[5] || '', reporter: r[6] || '' }));
   result.announcements_staff = aa.filter(a => a.type === '職員');
   result.announcements_student = aa.filter(a => a.type === '生徒');
 
   // 6. 教室予約
   const nr = getRowsFixedCols(SHEETS.ROOM, 6).filter(r => formatDate(r[1]) === dateStr)
-    .map(r => ({ id: r[0], date: r[1], room: r[2]||'', period: r[3]||'', content: r[4]||'', reserver: r[5]||'', is_fixed: false }));
+    .map(r => ({ id: r[0], date: r[1], room: r[2] || '', period: r[3] || '', content: r[4] || '', reserver: r[5] || '', is_fixed: false }));
   const fr = getRowsFixedCols(SHEETS.FIXED_CLASS, 5).filter(r => r[0] === dayOfWeek)
-    .map(r => ({ id: 'fixed', date: dateStr, period: r[1]||'', room: r[2]||'', content: r[3]||'', reserver: r[4]||'', is_fixed: true }));
+    .map(r => ({ id: 'fixed', date: dateStr, period: r[1] || '', room: r[2] || '', content: r[3] || '', reserver: r[4] || '', is_fixed: true }));
   result.reservations = [...fr, ...nr];
 
   return result;
@@ -163,46 +163,46 @@ function getTasks() {
 function saveData(category, data) {
   try {
     if (!isValidCategory(category)) throw new Error(`無効なカテゴリ: ${category}`);
-    
+
     // タスク以外は日付チェック
     if (category !== 'task' && !isValidDate(data.date)) throw new Error(ERROR_MESSAGES.INVALID_DATE);
 
     const isUpdate = !!data.id; // IDがあれば更新モード
     const id = isUpdate ? data.id : Utilities.getUuid();
-    
+
     let sheetName = "";
     let rowData = []; // IDを除くデータ配列（更新用）
-    
+
     // カテゴリごとの設定
     switch (category) {
       case 'daily':
         sheetName = SHEETS.DAILY;
-        rowData = [data.date, data.time||'', data.content, data.note||''];
+        rowData = [data.date, data.time || '', data.content, data.note || ''];
         break;
       case 'trip':
         sheetName = SHEETS.TRIP;
-        rowData = [data.date, data.staff, data.purpose, data.location, data.time||'1日', data.note||''];
+        rowData = [data.date, data.staff, data.purpose, data.location, data.time || '1日', data.note || ''];
         break;
       case 'leave':
         sheetName = SHEETS.LEAVE;
-        rowData = [data.date, data.staff, data.type, data.time||'1日', data.note||''];
+        rowData = [data.date, data.staff, data.type, data.time || '1日', data.note || ''];
         break;
       case 'meeting':
         sheetName = SHEETS.MEETING;
-        rowData = [data.date, data.name, data.time||'放課後', data.place||'会議室'];
+        rowData = [data.date, data.name, data.time || '放課後', data.place || '会議室'];
         break;
       case 'announce':
         sheetName = SHEETS.ANNOUNCE;
-        rowData = [data.date, data.type, data.priority||'・', data.target||'全職員', data.content, data.reporter];
+        rowData = [data.date, data.type, data.priority || '・', data.target || '全職員', data.content, data.reporter];
         break;
       case 'room':
         sheetName = SHEETS.ROOM;
-        rowData = [data.date, data.room, data.period, data.content, data.reserver||''];
+        rowData = [data.date, data.room, data.period, data.content, data.reserver || ''];
         break;
       case 'task':
         sheetName = SHEETS.TASK;
         // id, name, roll, content, due_date, check
-        rowData = [data.name, data.roll||'', data.content, data.due_date||'', data.check||false];
+        rowData = [data.name, data.roll || '', data.content, data.due_date || '', data.check || false];
         break;
     }
 
@@ -214,14 +214,14 @@ function saveData(category, data) {
       const dataRange = sheet.getDataRange();
       const values = dataRange.getValues();
       let rowIndex = -1;
-      
+
       for (let i = 1; i < values.length; i++) {
         if (values[i][0] == id) {
           rowIndex = i + 1;
           break;
         }
       }
-      
+
       if (rowIndex > 0) {
         // 行の値を更新（ID列[0]は変更せず、その右側を更新）
         sheet.getRange(rowIndex, 2, 1, rowData.length).setValues([rowData]);
@@ -309,7 +309,7 @@ function getRowsFixedCols(sheetName, colCount) {
 function getStaffData() {
   try {
     const rows = getRows(SHEETS.STAFF);
-    return rows.map(r => ({ id: r[0]||'', name: r[1]||'', role: r[2]||'', order: r[3]||999 }))
+    return rows.map(r => ({ id: r[0] || '', name: r[1] || '', role: r[2] || '', order: r[3] || 999 }))
       .filter(s => s.name).sort((a, b) => a.order - b.order);
   } catch (e) { return []; }
 }
