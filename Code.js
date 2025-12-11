@@ -1,8 +1,8 @@
 /**
- * 職員朝礼伝達システム - Backend Logic (v7.0)
+ * 職員朝礼伝達システム - Backend Logic (v8.0)
  *
  * @description 教員朝礼で使用する伝達事項・予定管理システム
- * @version 7.0
+ * @version 8.0
  * @author System
  */
 
