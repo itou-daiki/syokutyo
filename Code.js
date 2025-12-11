@@ -80,13 +80,23 @@ function getData(dateStr) {
     const tomorrowData = getDataForDate(tomorrowStr);
 
     // タスクデータ（全件取得し、フロントでフィルタリング）
-    const tasks = getTasks();
+    let tasks = getTasks();
+    const staffList = getStaffData();
+
+    // ユーザー識別 & フィルタリング
+    const userEmail = Session.getActiveUser().getEmail();
+    const currentUser = staffList.find(s => s.email === userEmail);
+
+    if (currentUser) {
+      tasks = tasks.filter(t => t.name === currentUser.name);
+    }
 
     return JSON.stringify({
-      staff: getStaffData(),
+      staff: staffList,
       today: todayData,
       tomorrow: tomorrowData,
-      tasks: tasks
+      tasks: tasks,
+      currentUser: currentUser ? currentUser.name : null
     });
 
   } catch (e) {
@@ -309,7 +319,7 @@ function getRowsFixedCols(sheetName, colCount) {
 function getStaffData() {
   try {
     const rows = getRows(SHEETS.STAFF);
-    return rows.map(r => ({ id: r[0] || '', name: r[1] || '', role: r[2] || '', order: r[3] || 999 }))
+    return rows.map(r => ({ id: r[0] || '', name: r[1] || '', role: r[2] || '', order: r[3] || 999, email: r[4] || '' }))
       .filter(s => s.name).sort((a, b) => a.order - b.order);
   } catch (e) { return []; }
 }

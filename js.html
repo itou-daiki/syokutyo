@@ -77,6 +77,12 @@ function onDataLoaded(json) {
     currentData = data;
     staffList = data.staff;
     
+    // サーバー側でユーザー特定できた場合、それを優先
+    if (data.currentUser) {
+      currentUser = data.currentUser;
+      localStorage.setItem('syokutyo_user', currentUser);
+    }
+    
     updateStaffSelect();
     
     updateHeader(currentDate, data.today.daily.length, 'headerTodayInfo');
