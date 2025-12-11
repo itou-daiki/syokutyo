@@ -20,36 +20,32 @@
 
   <!-- Navigation Bar -->
   <nav class="navbar navbar-expand-md sticky-top">
-    <div class="container-fluid" style="max-width: 1400px;">
+    <div class="container-fluid" style="max-width: 1400px; display: flex; align-items: center; justify-content: space-between;">
       <!-- Brand -->
-      <a class="navbar-brand" href="#" style="display: flex; align-items: center; gap: 0.5rem;">
+      <a class="navbar-brand" href="#" style="display: flex; align-items: center; gap: 0.5rem; margin-right: auto;">
         <i class="bi bi-journal-text"></i>
         朝礼伝達システム
       </a>
 
       <!-- Date Navigation & Weather -->
-      <div class="d-flex align-items-center gap-3 ms-auto">
+      <div class="d-flex align-items-center gap-2">
         <!-- Date Controls -->
-        <div class="d-flex align-items-center gap-2">
-          <div class="btn-group" role="group">
-            <button class="btn" onclick="changeDate(-1)" title="前日">
-              <i class="bi bi-chevron-left"></i>
-            </button>
-            <button class="btn" onclick="setToday()" title="今日">
-              <i class="bi bi-calendar-today"></i>
-            </button>
-            <button class="btn" onclick="changeDate(1)" title="翌日">
-              <i class="bi bi-chevron-right"></i>
-            </button>
-          </div>
-          <input type="date" id="datePicker" class="form-control" style="width: auto;" onchange="onDatePickerChange()">
-          <button class="btn btn-outline-primary d-none d-md-inline-flex" onclick="loadData()" title="更新">
-            <i class="bi bi-arrow-clockwise"></i>
-          </button>
-        </div>
+        <button class="btn" onclick="changeDate(-1)" title="前日">
+          <i class="bi bi-chevron-left"></i>
+        </button>
+        <button class="btn" onclick="setToday()" title="今日">
+          <i class="bi bi-calendar-today"></i>
+        </button>
+        <button class="btn" onclick="changeDate(1)" title="翌日">
+          <i class="bi bi-chevron-right"></i>
+        </button>
+        <input type="date" id="datePicker" class="form-control" style="width: auto;" onchange="onDatePickerChange()">
+        <button class="btn btn-outline-primary" onclick="loadData()" title="更新">
+          <i class="bi bi-arrow-clockwise"></i>
+        </button>
 
         <!-- Weather Info (Compact) -->
-        <div id="weatherInfo" class="d-none d-lg-flex align-items-center gap-2" style="padding: 0.5rem 1rem; background: var(--color-gray-50); border-radius: var(--radius-sm); min-width: 180px;">
+        <div id="weatherInfo" class="d-none d-xl-flex align-items-center gap-2" style="padding: 0.5rem 1rem; background: var(--color-gray-50); border-radius: var(--radius-sm); margin-left: 1rem;">
           <div class="spinner-border spinner-border-sm text-warning" role="status">
             <span class="visually-hidden">読み込み中...</span>
           </div>
