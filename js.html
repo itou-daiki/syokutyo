@@ -1,926 +1,348 @@
 <script>
 /**
- * 職員朝礼伝達システム - Frontend Logic (v7.0)
+ * 職員朝礼伝達システム - Frontend Logic (v10.2)
+ * Robust Initialization
  */
-
-// =============================================================================
-// グローバル変数
-// =============================================================================
 
 let currentDate = new Date();
 let currentData = {};
 let staffList = [];
 let modal = null;
-
-// =============================================================================
-// 定数定義
-// =============================================================================
+let currentUser = localStorage.getItem('syokutyo_user') || '';
 
 const CONFIG = {
   ROOMS: ['選択1', '選択2', '選択3', '選択4', 'PC室', '会議室', '視聴覚室'],
   PERIODS: ['1限', '2限', '3限', '4限', '昼', '5限', '6限', '放課後'],
-  DAYS_OF_WEEK: ['日', '月', '火', '水', '木', '金', '土'],
-  TOAST_DURATION: 3000,
-  // 日田市の座標
-  HITA_LAT: 33.3219,
-  HITA_LON: 130.9414
+  DAYS_OF_WEEK: ['日', '月', '火', '水', '木', '金', '土']
 };
 
-const MESSAGE = {
-  LOAD_SUCCESS: 'データを読み込みました',
-  LOAD_ERROR: 'データの読み込みに失敗しました',
-  SAVE_SUCCESS: 'データを保存しました',
-  SAVE_ERROR: 'データの保存に失敗しました',
-  DELETE_SUCCESS: 'データを削除しました',
-  DELETE_ERROR: 'データの削除に失敗しました',
-  COPY_SUCCESS: 'コピーしました',
-  COPY_ERROR: 'コピーに失敗しました'
-};
-
-// =============================================================================
-// 初期化
-// =============================================================================
-
+// 初期化：エラーがあっても日付セットだけは進める
 window.onload = function() {
-  initializeApp();
+  try {
+    const modalEl = document.getElementById('entryModal');
+    if (modalEl && typeof bootstrap !== 'undefined') {
+      modal = new bootstrap.Modal(modalEl);
+    } else {
+      console.warn('Bootstrap Modal init skipped or failed.');
+    }
+  } catch (e) {
+    console.error('Modal init error:', e);
+  } finally {
+    // モーダルの初期化成否に関わらず、日付セットとデータ読み込みを実行
+    setToday();
+  }
 };
 
-/**
- * アプリケーションの初期化
- */
-function initializeApp() {
+// =============================================================================
+// ユーザー管理
+// =============================================================================
+function updateStaffSelect() {
+  const select = document.getElementById('currentUserSelect');
+  if(!select) return;
+  select.innerHTML = '<option value="">(全員表示)</option>' + 
+    staffList.map(s => `<option value="${s.name}" ${s.name===currentUser?'selected':''}>${s.name}</option>`).join('');
+  
+  if (currentData.tasks) renderTaskList(currentData.tasks);
+}
+
+function changeCurrentUser() {
+  currentUser = document.getElementById('currentUserSelect').value;
+  localStorage.setItem('syokutyo_user', currentUser);
+  if (currentData.tasks) renderTaskList(currentData.tasks);
+}
+
+// =============================================================================
+// データ操作
+// =============================================================================
+function loadData() {
+  const loading = document.getElementById('loading');
+  if(loading) loading.style.display = 'flex';
+  
+  // 日付ピッカーから値を取得。もし空なら現在日時で補填
+  let datePicker = document.getElementById('datePicker');
+  if (!datePicker.value) {
+    const d = new Date();
+    datePicker.value = `${d.getFullYear()}-${('0'+(d.getMonth()+1)).slice(-2)}-${('0'+d.getDate()).slice(-2)}`;
+  }
+  
+  google.script.run
+    .withSuccessHandler(onDataLoaded)
+    .withFailureHandler(onFailure)
+    .getData(datePicker.value);
+}
+
+function onDataLoaded(json) {
   try {
-    modal = new bootstrap.Modal(document.getElementById('entryModal'));
-    setToday();
-  } catch (e) {
-    console.error('初期化エラー:', e);
-    showErrorToast('アプリケーションの初期化に失敗しました');
+    const data = JSON.parse(json);
+    currentData = data;
+    staffList = data.staff;
+    
+    updateStaffSelect();
+    
+    updateHeader(currentDate, data.today.daily.length, 'headerTodayInfo');
+    const tmr = new Date(currentDate); tmr.setDate(tmr.getDate()+1);
+    updateHeader(tmr, data.tomorrow.daily.length, 'headerTomorrowInfo');
+    
+    renderDailyList(data.today.daily, 'dailyList');
+    renderDailyList(data.tomorrow.daily, 'dailyListTomorrow');
+    
+    renderMeetings(data.today.meetings, 'meetingListMain');
+    document.getElementById('headerMeetingInfo').textContent = `${data.today.counts.meeting}件`;
+    
+    renderSimpleList('tripList', data.today.trips, 'trip', 'headerTripInfo');
+    renderSimpleList('leaveList', data.today.leaves, 'leave', 'headerLeaveInfo');
+    
+    renderAnnouncements('announceStaffList', data.today.announcements_staff, 'announce');
+    renderAnnouncements('announceStudentList', data.today.announcements_student, 'announce');
+    
+    renderTaskList(data.tasks);
+    renderRoomMatrix(data.today.reservations);
+    
+    loadWeather();
+  } catch(e) { console.error(e); }
+  finally {
+    const loading = document.getElementById('loading');
+    if(loading) loading.style.display = 'none';
+  }
+}
+
+function updateHeader(d, c, id) {
+  const el = document.getElementById(id);
+  if(el) {
+    const day = CONFIG.DAYS_OF_WEEK[d.getDay()];
+    el.textContent = `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} (${day})　${c}件`;
   }
 }
 
 // =============================================================================
 // 日付操作
 // =============================================================================
-
-/**
- * 今日の日付に設定
- */
 function setToday() {
   currentDate = new Date();
   updateDatePicker();
   loadData();
 }
 
-/**
- * 日付を変更
- * @param {number} delta - 変更する日数（+1: 翌日, -1: 前日）
- */
-function changeDate(delta) {
-  currentDate.setDate(currentDate.getDate() + delta);
+function changeDate(d) {
+  currentDate.setDate(currentDate.getDate() + d);
   updateDatePicker();
   loadData();
 }
 
-/**
- * 日付ピッカーを更新
- */
 function updateDatePicker() {
   const datePicker = document.getElementById('datePicker');
+  const navDisplay = document.getElementById('navDateDisplay');
+  
   if (!datePicker) return;
 
   const y = currentDate.getFullYear();
   const m = ('0' + (currentDate.getMonth() + 1)).slice(-2);
   const d = ('0' + currentDate.getDate()).slice(-2);
-  datePicker.value = `${y}-${m}-${d}`;
+  const dateStr = `${y}-${m}-${d}`;
+  
+  datePicker.value = dateStr;
+  
+  if (navDisplay) {
+    // 日付表示を更新 (例: 2025/12/11)
+    navDisplay.textContent = `${y}/${parseInt(m)}/${parseInt(d)}`;
+  }
 }
 
-/**
- * 日付ピッカーの変更イベント
- */
 function onDatePickerChange() {
   const datePicker = document.getElementById('datePicker');
   if (!datePicker || !datePicker.value) return;
-
   currentDate = new Date(datePicker.value);
+  
+  // 表示用ラベルも更新
+  const navDisplay = document.getElementById('navDateDisplay');
+  if(navDisplay) {
+      const parts = datePicker.value.split('-');
+      navDisplay.textContent = `${parts[0]}/${parseInt(parts[1])}/${parseInt(parts[2])}`;
+  }
   loadData();
 }
 
 // =============================================================================
-// ユーティリティ関数
+// レンダリング
 // =============================================================================
-
-/**
- * HTMLエスケープ（XSS対策）
- * @param {string} text - エスケープする文字列
- * @returns {string} エスケープされた文字列
- */
-function escapeHtml(text) {
-  if (!text) return '';
-  const map = {
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#039;'
-  };
-  return text.toString().replace(/[&<>"']/g, m => map[m]);
-}
-
-/**
- * ローディング表示の切り替え
- * @param {boolean} show - 表示するかどうか
- */
-function showLoading(show) {
-  const loading = document.getElementById('loading');
-  if (loading) {
-    loading.style.display = show ? 'flex' : 'none';
-  }
-}
-
-// =============================================================================
-// トーストメッセージ
-// =============================================================================
-
-/**
- * 成功メッセージを表示
- * @param {string} message - 表示するメッセージ
- */
-function showSuccessToast(message) {
-  showToast(message, 'success');
-}
-
-/**
- * エラーメッセージを表示
- * @param {string} message - 表示するメッセージ
- */
-function showErrorToast(message) {
-  showToast(message, 'error');
-}
-
-/**
- * トーストメッセージを表示
- * @param {string} message - 表示するメッセージ
- * @param {string} type - メッセージタイプ（'success' or 'error'）
- */
-function showToast(message, type = 'info') {
-  // 既存のトーストを削除
-  const existingToast = document.getElementById('customToast');
-  if (existingToast) {
-    existingToast.remove();
-  }
-
-  // トーストHTML作成
-  const bgColor = type === 'success' ? 'bg-success' : type === 'error' ? 'bg-danger' : 'bg-info';
-  const icon = type === 'success' ? 'check-circle-fill' : type === 'error' ? 'exclamation-triangle-fill' : 'info-circle-fill';
-
-  const toastHTML = `
-    <div id="customToast" class="position-fixed top-0 start-50 translate-middle-x mt-3" style="z-index: 9999;">
-      <div class="toast show ${bgColor} text-white" role="alert">
-        <div class="toast-body d-flex align-items-center">
-          <i class="bi bi-${icon} me-2"></i>
-          <span>${message}</span>
-          <button type="button" class="btn-close btn-close-white ms-auto" onclick="this.closest('.toast').remove()"></button>
-        </div>
-      </div>
-    </div>
-  `;
-
-  document.body.insertAdjacentHTML('beforeend', toastHTML);
-
-  // 自動的に削除
-  setTimeout(() => {
-    const toast = document.getElementById('customToast');
-    if (toast) {
-      toast.remove();
-    }
-  }, CONFIG.TOAST_DURATION);
-}
-
-// =============================================================================
-// データ読み込み
-// =============================================================================
-
-/**
- * データを読み込む
- */
-function loadData() {
-  try {
-    showLoading(true);
-    const dateStr = document.getElementById('datePicker').value;
-    console.log('Loading data for date:', dateStr);
-
-    google.script.run
-      .withSuccessHandler(onDataLoaded)
-      .withFailureHandler(onFailure)
-      .getData(dateStr);
-  } catch (e) {
-    console.error('loadData error:', e);
-    showErrorToast(MESSAGE.LOAD_ERROR);
-    showLoading(false);
-  }
-}
-
-/**
- * データ読み込み成功時の処理
- * @param {string} json - JSON形式のデータ
- */
-function onDataLoaded(json) {
-  try {
-    const data = JSON.parse(json);
-    currentData = data;
-    staffList = data.staff;
-
-    console.log('Data loaded successfully:', {
-      today_daily: data.today.daily.length,
-      tomorrow_daily: data.tomorrow.daily.length,
-      trips: data.today.trips.length,
-      leaves: data.today.leaves.length,
-      meetings: data.today.meetings.length
-    });
-
-    // 本日の日付表示を更新
-    const dateStr = document.getElementById('datePicker').value;
-    const dayOfWeek = CONFIG.DAYS_OF_WEEK[currentDate.getDay()];
-    document.getElementById('displayDate').textContent = `${dateStr} (${dayOfWeek})`;
-
-    // 明日の日付表示を更新
-    const tomorrow = new Date(currentDate);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowDayOfWeek = CONFIG.DAYS_OF_WEEK[tomorrow.getDay()];
-    const tomorrowStr = formatDateString(tomorrow);
-    document.getElementById('displayDateTomorrow').textContent = `${tomorrowStr} (${tomorrowDayOfWeek})`;
-
-    // 各セクションをレンダリング（本日）
-    renderDailyList(data.today.daily, 'dailyList', 'dailyCount');
-    renderTripList(data.today.trips);
-    renderLeaveList(data.today.leaves);
-    renderMeetings(data.today.meetings);
-    renderAnnouncements('announceStaffList', data.today.announcements_staff, 'announce');
-    renderAnnouncements('announceStudentList', data.today.announcements_student, 'announce');
-    renderRoomMatrix(data.today.reservations);
-
-    // 明日の行事をレンダリング
-    renderDailyList(data.tomorrow.daily, 'dailyListTomorrow', 'dailyCountTomorrow');
-
-    // 会議情報をメインセクションにも表示
-    renderMeetings(data.today.meetings, 'meetingListMain');
-    document.getElementById('badgeMeetingMain').textContent = data.today.counts.meeting;
-
-    // カウント表示を更新
-    document.getElementById('badgeTrip').textContent = data.today.counts.trip;
-    document.getElementById('badgeLeave').textContent = data.today.counts.leave;
-    document.getElementById('badgeMeeting').textContent = data.today.counts.meeting;
-
-    // 天気予報を取得
-    loadWeather();
-
-    showLoading(false);
-  } catch (e) {
-    console.error('onDataLoaded error:', e);
-    showErrorToast(MESSAGE.LOAD_ERROR);
-    showLoading(false);
-  }
-}
-
-/**
- * Date オブジェクトを yyyy-MM-dd 形式の文字列に変換
- * @param {Date} date - 日付オブジェクト
- * @returns {string} yyyy-MM-dd形式の日付文字列
- */
-function formatDateString(date) {
-  const y = date.getFullYear();
-  const m = ('0' + (date.getMonth() + 1)).slice(-2);
-  const d = ('0' + date.getDate()).slice(-2);
-  return `${y}-${m}-${d}`;
-}
-
-/**
- * データ読み込み失敗時の処理
- * @param {Error} error - エラーオブジェクト
- */
-function onFailure(error) {
-  console.error('Server error:', error);
-  showErrorToast(`${MESSAGE.LOAD_ERROR}: ${error.message || error}`);
-  showLoading(false);
-}
-
-// =============================================================================
-// 天気予報
-// =============================================================================
-
-/**
- * 天気予報を読み込む（サーバーサイド経由）
- */
-function loadWeather() {
-  const weatherEl = document.getElementById('weatherInfo');
-
-  try {
-    google.script.run
-      .withSuccessHandler(function(weatherJson) {
-        try {
-          const data = JSON.parse(weatherJson);
-          console.log('Weather data loaded:', data);
-          renderWeather(data);
-        } catch (e) {
-          console.error('Weather data parse error:', e);
-          weatherEl.innerHTML = `
-            <div class="text-muted">
-              <i class="bi bi-exclamation-triangle fs-3 d-block mb-2"></i>
-              <small>天気情報の解析に失敗しました</small>
-            </div>
-          `;
-        }
-      })
-      .withFailureHandler(function(error) {
-        console.error('Weather API error:', error);
-        weatherEl.innerHTML = `
-          <div class="text-muted">
-            <i class="bi bi-exclamation-triangle fs-3 d-block mb-2"></i>
-            <small>天気情報の取得に失敗しました</small>
-          </div>
-        `;
-      })
-      .getWeatherData();
-  } catch (e) {
-    console.error('loadWeather error:', e);
-    weatherEl.innerHTML = `
-      <div class="text-muted">
-        <i class="bi bi-exclamation-triangle fs-3 d-block mb-2"></i>
-        <small>天気情報の取得に失敗しました</small>
-      </div>
-    `;
-  }
-}
-
-/**
- * 天気予報を表示（ナビゲーションバー用コンパクト版）
- * @param {Object} data - Open-Meteo APIからのデータ
- */
-function renderWeather(data) {
-  const weatherEl = document.getElementById('weatherInfo');
-
-  if (!data || !data.current || !data.daily) {
-    weatherEl.innerHTML = '<small class="text-muted">天気情報なし</small>';
-    return;
-  }
-
-  const current = data.current;
-  const today = data.daily;
-
-  // 天気アイコンを取得
-  const weatherIcon = getWeatherIcon(current.weather_code);
-
-  // コンパクトな表示（ナビゲーションバー用）
-  weatherEl.innerHTML = `
-    <i class="bi ${weatherIcon}" style="font-size: 1.5rem; color: #F39C12;"></i>
-    <div class="d-flex flex-column" style="line-height: 1.2;">
-      <span style="font-size: 1.1rem; font-weight: 700;">${Math.round(current.temperature_2m)}°C</span>
-      <small class="text-muted" style="font-size: 0.75rem;">日田市</small>
-    </div>
-  `;
-}
-
-/**
- * WMO Weather Codeから天気アイコンを取得
- * @param {number} code - WMO天気コード
- * @returns {string} Bootstrap Iconのクラス名
- */
-function getWeatherIcon(code) {
-  const iconMap = {
-    0: 'bi-sun-fill',           // 快晴
-    1: 'bi-sun',                // 晴れ
-    2: 'bi-cloud-sun',          // 一部曇り
-    3: 'bi-cloud',              // 曇り
-    45: 'bi-cloud-fog',         // 霧
-    48: 'bi-cloud-fog',         // 霧
-    51: 'bi-cloud-drizzle',     // 小雨
-    53: 'bi-cloud-drizzle',     // 小雨
-    55: 'bi-cloud-drizzle',     // 小雨
-    61: 'bi-cloud-rain',        // 雨
-    63: 'bi-cloud-rain',        // 雨
-    65: 'bi-cloud-rain-heavy',  // 大雨
-    71: 'bi-cloud-snow',        // 雪
-    73: 'bi-cloud-snow',        // 雪
-    75: 'bi-cloud-snow',        // 大雪
-    77: 'bi-cloud-snow',        // みぞれ
-    80: 'bi-cloud-rain',        // にわか雨
-    81: 'bi-cloud-rain',        // にわか雨
-    82: 'bi-cloud-rain-heavy',  // 激しいにわか雨
-    85: 'bi-cloud-snow',        // にわか雪
-    86: 'bi-cloud-snow',        // にわか雪
-    95: 'bi-cloud-lightning',   // 雷雨
-    96: 'bi-cloud-lightning-rain', // 雷雨
-    99: 'bi-cloud-lightning-rain'  // 雷雨
-  };
-
-  return iconMap[code] || 'bi-cloud-sun';
-}
-
-// =============================================================================
-// レンダリング関数
-// =============================================================================
-
-/**
- * 行事リストをレンダリング
- * @param {Array} items - 行事データの配列
- * @param {string} listId - リスト要素のID
- * @param {string} countId - カウント表示要素のID
- */
-function renderDailyList(items, listId = 'dailyList', countId = 'dailyCount') {
-  try {
-    const list = document.getElementById(listId);
-    const countEl = document.getElementById(countId);
-
-    list.innerHTML = '';
-    if (countEl) {
-      countEl.textContent = items.length + '件';
-    }
-
-    if (!items || items.length === 0) {
-      list.innerHTML = `
-        <li class="list-group-item text-muted text-center py-5">
-          <i class="bi bi-calendar3 fs-1 d-block mb-2 opacity-25"></i>
-          予定はありません
-        </li>
-      `;
-      return;
-    }
-
-    // 時刻でソート
-    items.sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
-
-    const showDeleteButton = listId === 'dailyList'; // 本日の行事のみ削除ボタンを表示
-
-    items.forEach((d, index) => {
-      const timeHtml = d.time ? `<span class="badge bg-primary me-2">${escapeHtml(d.time)}</span>` : '';
-      const noteHtml = d.note ? `<br><small class="text-muted"><i class="bi bi-info-circle me-1"></i>${escapeHtml(d.note)}</small>` : '';
-      const contentSafe = escapeHtml(d.content);
-
-      const deleteButton = showDeleteButton ? `
-        <button class="btn btn-sm text-danger opacity-50 btn-icon"
-                onclick="deleteItemById(this)"
-                data-id="${escapeHtml(d.id)}"
-                data-category="daily"
-                data-name="${contentSafe}"
-                title="削除">
-          <i class="bi bi-trash"></i>
-        </button>
-      ` : '';
-
-      list.innerHTML += `
-        <li class="list-group-item d-flex justify-content-between align-items-start" style="animation: fadeInUp ${0.3 + index * 0.1}s ease-out;">
-          <div class="me-auto">
-            <div class="fw-bold fs-5">${timeHtml}${contentSafe}</div>
-            ${noteHtml}
-          </div>
-          ${deleteButton}
-        </li>
-      `;
-    });
-
-    // アニメーション用のスタイルを追加（一度だけ）
-    if (!document.getElementById('fadeInUpStyle')) {
-      const style = document.createElement('style');
-      style.id = 'fadeInUpStyle';
-      style.textContent = `
-        @keyframes fadeInUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `;
-      document.head.appendChild(style);
-    }
-  } catch (e) {
-    console.error('renderDailyList error:', e);
-  }
-}
-
-/**
- * 出張リストをレンダリング
- * @param {Array} items - 出張データの配列
- */
-function renderTripList(items) {
-  const list = document.getElementById('tripList');
-  list.innerHTML = items.length ? '' : `
-    <li class="list-group-item text-muted text-center py-3">
-      <i class="bi bi-briefcase opacity-25 fs-4 d-block mb-1"></i>
-      <small>予定なし</small>
-    </li>
-  `;
-
-  items.forEach(t => {
+function renderDailyList(items, id) {
+  const list = document.getElementById(id);
+  list.innerHTML = items.length ? '' : '<li class="list-group-item text-center text-muted">予定なし</li>';
+  items.sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  items.forEach(d => {
+    const editBtn = `<button class="btn btn-sm text-primary" onclick='openEditModal("daily", ${JSON.stringify(d)})'><i class="bi bi-pencil-square"></i></button>`;
+    const delBtn = `<button class="btn btn-sm text-danger" onclick="deleteItem('${d.id}','daily','${escapeHtml(d.content)}')"><i class="bi bi-trash"></i></button>`;
     list.innerHTML += `
       <li class="list-group-item">
-        <div class="d-flex justify-content-between align-items-center mb-1">
-          <strong>${escapeHtml(t.staff_name)}</strong>
-          <span class="badge bg-success rounded-pill">${escapeHtml(t.time)}</span>
+        <div>
+          <span class="fw-bold text-primary me-2">${escapeHtml(d.time)}</span>
+          <span class="fw-bold">${escapeHtml(d.content)}</span>
+          <small class="text-muted ms-2">${escapeHtml(d.note)}</small>
         </div>
-        <div class="small text-muted">
-          <i class="bi bi-geo-alt me-1"></i>${escapeHtml(t.location)}
-        </div>
-        <div class="small text-muted">
-          <i class="bi bi-briefcase me-1"></i>${escapeHtml(t.purpose)}
-        </div>
-      </li>
-    `;
+        <div class="btn-action-group">${editBtn}${delBtn}</div>
+      </li>`;
   });
 }
 
-/**
- * 休暇リストをレンダリング
- * @param {Array} items - 休暇データの配列
- */
-function renderLeaveList(items) {
-  const list = document.getElementById('leaveList');
-  list.innerHTML = items.length ? '' : `
-    <li class="list-group-item text-muted text-center py-3">
-      <i class="bi bi-house-door opacity-25 fs-4 d-block mb-1"></i>
-      <small>予定なし</small>
-    </li>
-  `;
-
-  items.forEach(l => {
-    const badgeClass = l.type === '年休' ? 'bg-primary' : l.type === '夏季休暇' ? 'bg-info text-dark' : 'bg-secondary';
-    list.innerHTML += `
-      <li class="list-group-item">
-        <div class="d-flex justify-content-between align-items-center mb-1">
-          <strong>${escapeHtml(l.staff_name)}</strong>
-          <span class="badge ${badgeClass} rounded-pill">${escapeHtml(l.type)}</span>
-        </div>
-        <div class="small text-muted">
-          <i class="bi bi-clock me-1"></i>${escapeHtml(l.time)}
-        </div>
-      </li>
-    `;
+function renderMeetings(items, id) {
+  const list = document.getElementById(id);
+  list.innerHTML = items.length ? '' : '<tr><td colspan="3" class="text-center text-muted py-3">予定なし</td></tr>';
+  items.forEach(m => {
+    if(m.is_fixed) {
+      list.innerHTML += `<tr class="table-light text-muted"><td><i class="bi bi-arrow-repeat"></i> ${escapeHtml(m.name)}</td><td>${escapeHtml(m.time)}</td><td>${escapeHtml(m.place)}</td></tr>`;
+    } else {
+      const btns = `<button class="btn btn-sm text-primary p-0 me-2" onclick='openEditModal("meeting", ${JSON.stringify(m)})'><i class="bi bi-pencil-square"></i></button>
+                    <button class="btn btn-sm text-danger p-0" onclick="deleteItem('${m.id}','meeting','${escapeHtml(m.name)}')"><i class="bi bi-trash"></i></button>`;
+      list.innerHTML += `<tr><td>${escapeHtml(m.name)}</td><td>${escapeHtml(m.time)}</td><td><div class="d-flex justify-content-between"><span>${escapeHtml(m.place)}</span><div class="btn-action-group">${btns}</div></div></td></tr>`;
+    }
   });
 }
 
-/**
- * 伝達事項をレンダリング
- * @param {string} id - 要素ID
- * @param {Array} items - 伝達事項データの配列
- * @param {string} cat - カテゴリ
- */
+function renderSimpleList(id, items, cat, headerId) {
+  const el = document.getElementById(headerId); if(el) el.textContent = items.length + '件';
+  const list = document.getElementById(id);
+  list.innerHTML = items.length ? '' : '<li class="list-group-item text-center text-muted">予定なし</li>';
+  items.forEach(i => {
+    const main = i.staff_name;
+    const sub = cat==='trip' ? `${i.location} (${i.purpose})` : i.type;
+    const btns = `<button class="btn btn-sm text-primary p-0 me-2" onclick='openEditModal("${cat}", ${JSON.stringify(i)})'><i class="bi bi-pencil-square"></i></button>
+                  <button class="btn btn-sm text-danger p-0" onclick="deleteItem('${i.id}','${cat}','${escapeHtml(main)}')"><i class="bi bi-trash"></i></button>`;
+    list.innerHTML += `<li class="list-group-item"><div class="w-100"><div class="d-flex justify-content-between mb-1"><span class="fw-bold">${escapeHtml(main)}</span><span class="badge bg-light text-dark border">${escapeHtml(i.time)}</span></div><div class="d-flex justify-content-between small"><span class="text-muted">${escapeHtml(sub)}</span><div class="btn-action-group">${btns}</div></div></div></li>`;
+  });
+}
+
 function renderAnnouncements(id, items, cat) {
-  try {
-    const el = document.getElementById(id);
-    const isStaff = id.includes('Staff');
-    const icon = isStaff ? 'bi-megaphone' : 'bi-broadcast';
-
-    el.innerHTML = items.length ? '' : `
-      <li class="list-group-item text-muted text-center py-4">
-        <i class="bi ${icon} opacity-25 fs-3 d-block mb-2"></i>
-        伝達事項なし
-      </li>
-    `;
-
-    items.forEach((a, index) => {
-      const priorityHtml = a.priority === '◎' ? '<span class="priority-high">重要</span>' : '';
-      el.innerHTML += `
-        <li class="list-group-item" style="animation: fadeInUp ${0.2 + index * 0.1}s ease-out;">
-          <div class="d-flex justify-content-between align-items-start mb-2">
-            <div class="d-flex align-items-center gap-2">
-              <span class="badge bg-light text-dark border">${escapeHtml(a.target)}</span>
-              <small class="text-muted">
-                <i class="bi bi-person-circle me-1"></i>${escapeHtml(a.reporter)}
-              </small>
-            </div>
-            <button class="btn btn-sm text-danger opacity-25 btn-icon p-0"
-                    onclick="deleteItemById(this)"
-                    data-id="${escapeHtml(a.id)}"
-                    data-category="${cat}"
-                    data-name="この伝達事項"
-                    title="削除">
-              <i class="bi bi-x-circle-fill fs-5"></i>
-            </button>
-          </div>
-          <div class="fs-6 lh-base">${priorityHtml}${escapeHtml(a.content)}</div>
-        </li>
-      `;
-    });
-  } catch (e) {
-    console.error('renderAnnouncements error:', e);
-  }
+  const list = document.getElementById(id);
+  list.innerHTML = items.length ? '' : '<li class="list-group-item text-center text-muted">なし</li>';
+  items.forEach(a => {
+    const prio = a.priority==='◎' ? '<span class="text-danger fw-bold">【重要】</span> ' : '';
+    const btns = `<button class="btn btn-sm text-primary p-0 me-2" onclick='openEditModal("announce", ${JSON.stringify(a)})'><i class="bi bi-pencil-square"></i></button>
+                  <button class="btn btn-sm text-danger p-0" onclick="deleteItem('${a.id}','announce','伝達事項')"><i class="bi bi-trash"></i></button>`;
+    list.innerHTML += `<li class="list-group-item"><div class="w-100"><div class="d-flex justify-content-between mb-1"><span class="badge bg-light text-dark border">${escapeHtml(a.target)}</span><small class="text-muted">${escapeHtml(a.reporter)}</small></div><div class="mb-2">${prio}${escapeHtml(a.content)}</div><div class="text-end btn-action-group">${btns}</div></div></li>`;
+  });
 }
 
-/**
- * 会議リストをレンダリング
- * @param {Array} items - 会議データの配列
- * @param {string} listId - リスト要素のID
- */
-function renderMeetings(items, listId = 'meetingList') {
-  try {
-    const el = document.getElementById(listId);
-    el.innerHTML = items.length ? '' : `
-      <tr>
-        <td colspan="3" class="text-center text-muted py-3">
-          <i class="bi bi-people opacity-25 fs-4 d-block mb-1"></i>
-          <small>予定なし</small>
-        </td>
-      </tr>
-    `;
-
-    items.forEach(m => {
-      const rowClass = m.is_fixed ? 'fixed-meeting' : '';
-      const icon = m.is_fixed ? '<i class="bi bi-arrow-repeat me-1" title="定例会議"></i>' : '';
-      el.innerHTML += `
-        <tr class="${rowClass}">
-          <td class="text-start">${icon}${escapeHtml(m.name)}</td>
-          <td><i class="bi bi-clock me-1"></i>${escapeHtml(m.time)}</td>
-          <td><i class="bi bi-geo-alt me-1"></i>${escapeHtml(m.place)}</td>
-        </tr>
-      `;
-    });
-  } catch (e) {
-    console.error('renderMeetings error:', e);
-  }
+function renderTaskList(tasks) {
+  const list = document.getElementById('taskList');
+  const filtered = currentUser ? tasks.filter(t => t.name === currentUser) : tasks;
+  const el = document.getElementById('headerTaskInfo'); if(el) el.textContent = `${filtered.length}件` + (currentUser ? ` (${currentUser})` : '');
+  list.innerHTML = filtered.length ? '' : '<li class="list-group-item text-center text-muted py-4">タスクなし</li>';
+  filtered.forEach(t => {
+    const checkIcon = t.check ? 'bi-check-circle-fill text-success' : 'bi-circle text-muted';
+    const contentClass = t.check ? 'task-content task-done' : 'task-content';
+    const btns = `<button class="btn btn-sm text-primary p-0 me-2" onclick='openEditModal("task", ${JSON.stringify(t)})'><i class="bi bi-pencil-square"></i></button>
+                  <button class="btn btn-sm text-danger p-0" onclick="deleteItem('${t.id}','task','${escapeHtml(t.content)}')"><i class="bi bi-trash"></i></button>`;
+    list.innerHTML += `<li class="list-group-item task-item"><i class="bi ${checkIcon} fs-4 task-check" onclick="toggleTask('${t.id}', ${!t.check})"></i><div class="${contentClass}"><div class="fw-bold">${escapeHtml(t.content)}</div><div class="task-meta">${escapeHtml(t.name)} | 期限: ${escapeHtml(t.due_date)}</div></div><div class="btn-action-group">${btns}</div></li>`;
+  });
 }
 
-/**
- * 教室予約マトリックスをレンダリング
- * @param {Array} reservations - 予約データの配列
- */
 function renderRoomMatrix(reservations) {
-  try {
-    const thead = document.querySelector('#roomTable thead');
-    const tbody = document.querySelector('#roomTable tbody');
-
-    // ヘッダー行を作成
-    let headHtml = '<tr><th class="bg-light"></th>';
-    CONFIG.PERIODS.forEach(p => {
-      headHtml += `<th>${escapeHtml(p)}</th>`;
+  const tbody = document.querySelector('#roomTable tbody');
+  const thead = document.querySelector('#roomTable thead');
+  let headHtml = '<tr><th class="bg-light"></th>';
+  CONFIG.PERIODS.forEach(p => headHtml += `<th>${p}</th>`);
+  thead.innerHTML = headHtml + '</tr>';
+  let bodyHtml = '';
+  CONFIG.ROOMS.forEach(room => {
+    bodyHtml += `<tr><th>${room}</th>`;
+    CONFIG.PERIODS.forEach(period => {
+      const nr = reservations.find(r => r.room===room && r.period===period && !r.is_fixed);
+      const fr = reservations.find(r => r.room===room && r.period===period && r.is_fixed);
+      if(nr) {
+        const content = nr.content==='中止' ? '<span class="cell-cancelled">中止</span>' : nr.content;
+        bodyHtml += `<td class="cell-occupied" onclick='openEditModal("room", ${JSON.stringify(nr)})'><div>${content}</div><div class="small">${escapeHtml(nr.reserver)}</div></td>`;
+      } else if(fr) {
+        bodyHtml += `<td class="cell-fixed" onclick="openFixedRoomModal('${room}','${period}','${fr.content}','${fr.reserver}')"><div>${escapeHtml(fr.content)}</div></td>`;
+      } else {
+        bodyHtml += `<td onclick="openRoomModal('${room}','${period}')"></td>`;
+      }
     });
-    thead.innerHTML = headHtml + '</tr>';
-
-    // ボディ行を作成
-    let bodyHtml = '';
-    CONFIG.ROOMS.forEach(room => {
-      bodyHtml += `<tr><th class="bg-light">${escapeHtml(room)}</th>`;
-
-      CONFIG.PERIODS.forEach(period => {
-        const nr = reservations.find(r => r.room === room && r.period === period && !r.is_fixed);
-        const fr = reservations.find(r => r.room === room && r.period === period && r.is_fixed);
-
-        if (nr) {
-          // 通常予約（固定設定の上書き）
-          const reserver = nr.reserver ? `<div style="font-size:0.75em; opacity:0.8; line-height:1.2;">${escapeHtml(nr.reserver)}</div>` : '';
-          if (nr.content === '中止') {
-            bodyHtml += `<td class="cell-cancelled" onclick="deleteOverride('${nr.id}', '中止')" title="クリックして削除"><small>中止</small>${reserver}</td>`;
-          } else {
-            bodyHtml += `<td class="cell-occupied" onclick="deleteOverride('${nr.id}', '${escapeHtml(nr.content)}')" title="${escapeHtml(nr.content)} (クリックして削除)"><div>${escapeHtml(nr.content)}</div>${reserver}</td>`;
-          }
-        } else if (fr) {
-          // 固定予約
-          const reserver = fr.reserver ? `<div style="font-size:0.75em; opacity:0.8; line-height:1.2;">${escapeHtml(fr.reserver)}</div>` : '';
-          bodyHtml += `<td class="cell-fixed" onclick="openFixedRoomModal('${escapeHtml(room)}', '${escapeHtml(period)}', '${escapeHtml(fr.content)}', '${escapeHtml(fr.reserver || '')}')" title="${escapeHtml(fr.content)} (固定設定)"><div>${escapeHtml(fr.content)}</div>${reserver}</td>`;
-        } else {
-          // 空き
-          bodyHtml += `<td onclick="openRoomModal('${escapeHtml(room)}', '${escapeHtml(period)}')" title="クリックして予約"></td>`;
-        }
-      });
-
-      bodyHtml += '</tr>';
-    });
-
-    tbody.innerHTML = bodyHtml;
-  } catch (e) {
-    console.error('renderRoomMatrix error:', e);
-  }
+    bodyHtml += '</tr>';
+  });
+  tbody.innerHTML = bodyHtml;
 }
 
-// Modals
-function getStaffOptionsHtml() { return '<option value="">選択</option>' + staffList.map(s => `<option value="${s.name}">${s.name}</option>`).join(''); }
+// Modal & Forms
+function openModal(cat, typeArg) { setupModalForm(cat, typeArg, null); if(modal) modal.show(); else alert('Modal機能は現在使用できません'); }
+function openEditModal(cat, data) { setupModalForm(cat, data.type || '', data); if(modal) modal.show(); }
 
-function openModal(cat, typeArg) {
+function setupModalForm(cat, typeArg, data) {
   document.getElementById('entryCategory').value = cat;
+  document.getElementById('entryId').value = data ? data.id : '';
   document.getElementById('announceType').value = typeArg || '';
-  const staffOpts = getStaffOptionsHtml();
+  const titleMap = { daily: '行事', meeting: '会議', trip: '出張', leave: '休暇', announce: '伝達事項', task: 'タスク', room: '教室予約' };
+  document.getElementById('modalTitle').innerText = (data ? '編集: ' : '登録: ') + titleMap[cat];
+  const staffOpts = '<option value="">選択</option>' + staffList.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+  const val = (key) => data ? (data[key] || '') : '';
+  
   let html = '';
-
-  if (cat === 'daily') {
-    document.getElementById('modalTitle').innerText = '行事の追加';
-    html = `<div class="mb-3"><label>時間</label><input type="text" id="inputTime" class="form-control" placeholder="例: 10:00, 終日"></div><div class="mb-3"><label>内容</label><input type="text" id="inputContent" class="form-control" placeholder="例: スクールカウンセラー来校"></div><div class="mb-3"><label>備考</label><input type="text" id="inputNote" class="form-control" placeholder="例: 応接室"></div>`;
-  } else if (cat === 'announce') {
-    const defTarget = typeArg === '生徒' ? '全学年' : '全職員';
-    html = `<div class="mb-3"><label>重要度</label><div class="btn-group w-100"><input type="radio" class="btn-check" name="prio" id="p1" value="・" checked><label class="btn btn-outline-secondary" for="p1">通常</label><input type="radio" class="btn-check" name="prio" id="p2" value="◎"><label class="btn btn-outline-danger" for="p2">重要</label></div></div><div class="mb-3"><label>対象</label><input type="text" id="inputTarget" class="form-control" value="${defTarget}"></div><div class="mb-3"><label>内容</label><textarea id="inputContent" class="form-control" rows="3"></textarea></div><div class="mb-3"><label>報告者</label><select id="inputReporter" class="form-select">${staffOpts}</select></div>`;
-    document.getElementById('modalTitle').innerText = `伝達事項（${typeArg||''}）`;
-  } else if (cat === 'trip') {
-    document.getElementById('modalTitle').innerText = '出張登録';
-    html = `<div class="mb-3"><label>職員</label><select id="inputStaff" class="form-select">${staffOpts}</select></div><div class="mb-3"><label>用務</label><input type="text" id="inputPurpose" class="form-control"></div><div class="mb-3"><label>場所</label><input type="text" id="inputLocation" class="form-control"></div><div class="mb-3"><label>時間</label><input type="text" id="inputTime" class="form-control" value="1日"></div><div class="mb-3"><label>備考</label><input type="text" id="inputNote" class="form-control"></div>`;
-  } else if (cat === 'leave') {
-    document.getElementById('modalTitle').innerText = '休暇登録';
-    html = `<div class="mb-3"><label>職員</label><select id="inputStaff" class="form-select">${staffOpts}</select></div><div class="mb-3"><label>種別</label><select id="inputType" class="form-select"><option>年休</option><option>振休</option><option>時間休</option><option>病休</option><option>夏季休暇</option><option>その他</option></select></div><div class="mb-3"><label>時間</label><input type="text" id="inputTime" class="form-control" value="1日"></div>`;
+  if (cat === 'task') {
+    html = `<div class="mb-3"><label class="form-label">担当者</label><select id="inputName" class="form-select">${staffOpts}</select><div class="form-text">自分に追加する場合は自分の名前を選択</div></div>
+            <div class="mb-3"><label class="form-label">タスク内容</label><input type="text" id="inputContent" class="form-control" value="${val('content')}"></div>
+            <div class="mb-3"><label class="form-label">期限</label><input type="date" id="inputDueDate" class="form-control" value="${val('due_date')}"></div>`;
+    setTimeout(() => { if(data) document.getElementById('inputName').value = data.name; else document.getElementById('inputName').value = currentUser; }, 0);
+  } else if (cat === 'daily') {
+    html = `<div class="mb-3"><label>時間</label><input type="text" id="inputTime" class="form-control" value="${val('time')}"></div><div class="mb-3"><label>内容</label><input type="text" id="inputContent" class="form-control" value="${val('content')}"></div><div class="mb-3"><label>備考</label><input type="text" id="inputNote" class="form-control" value="${val('note')}"></div>`;
   } else if (cat === 'meeting') {
-    document.getElementById('modalTitle').innerText = '会議登録';
-    html = `<div class="mb-3"><label>会議名</label><input type="text" id="inputName" class="form-control"></div><div class="mb-3"><label>時間</label><input type="text" id="inputTime" class="form-control" value="放課後"></div><div class="mb-3"><label>場所</label><input type="text" id="inputPlace" class="form-control" value="会議室"></div>`;
+    html = `<div class="mb-3"><label>会議名</label><input type="text" id="inputName" class="form-control" value="${val('name')}"></div><div class="mb-3"><label>時間</label><input type="text" id="inputTime" class="form-control" value="${val('time')||'放課後'}"></div><div class="mb-3"><label>場所</label><input type="text" id="inputPlace" class="form-control" value="${val('place')||'会議室'}"></div>`;
+  } else if (cat === 'trip' || cat === 'leave') {
+    html = `<div class="mb-3"><label>職員</label><select id="inputStaff" class="form-select">${staffOpts}</select></div>`;
+    if(cat==='trip') html+=`<div class="mb-3"><label>用務</label><input type="text" id="inputPurpose" class="form-control" value="${val('purpose')}"></div><div class="mb-3"><label>場所</label><input type="text" id="inputLocation" class="form-control" value="${val('location')}"></div>`;
+    else html+=`<div class="mb-3"><label>種別</label><select id="inputType" class="form-select"><option>年休</option><option>振休</option><option>時間休</option><option>病休</option><option>夏季休暇</option><option>その他</option></select></div>`;
+    html+=`<div class="mb-3"><label>時間</label><input type="text" id="inputTime" class="form-control" value="${val('time')||'1日'}"></div>`;
+    setTimeout(() => { if(data) { document.getElementById('inputStaff').value = data.staff_name || data.staff; if(cat==='leave') document.getElementById('inputType').value = data.type; } }, 0);
+  } else if (cat === 'announce') {
+    const isPrio = val('priority') === '◎';
+    html = `<div class="mb-3"><label>重要度</label><div class="btn-group w-100"><input type="radio" class="btn-check" name="prio" id="p1" value="・" ${!isPrio?'checked':''}><label class="btn btn-outline-secondary" for="p1">通常</label><input type="radio" class="btn-check" name="prio" id="p2" value="◎" ${isPrio?'checked':''}><label class="btn btn-outline-danger" for="p2">重要</label></div></div>
+            <div class="mb-3"><label>対象</label><input type="text" id="inputTarget" class="form-control" value="${val('target')||(typeArg==='生徒'?'全学年':'全職員')}"></div><div class="mb-3"><label>内容</label><textarea id="inputContent" class="form-control" rows="3">${val('content')}</textarea></div><div class="mb-3"><label>報告者</label><select id="inputReporter" class="form-select">${staffOpts}</select></div>`;
+    setTimeout(() => { if(data) document.getElementById('inputReporter').value = data.reporter; }, 0);
+  } else if (cat === 'room') {
+    html = `<input type="hidden" id="inputRoom" value="${val('room')}"><input type="hidden" id="inputPeriod" value="${val('period')}"><div class="mb-3"><strong>${val('room')} - ${val('period')}</strong></div><div class="mb-3"><label>授業・内容</label><input type="text" id="inputContent" class="form-control" value="${val('content')}"></div><div class="mb-3"><label>予約者</label><select id="inputReserver" class="form-select">${staffOpts}</select></div>`;
+    setTimeout(() => { if(data) document.getElementById('inputReserver').value = data.reserver; }, 0);
   }
   document.getElementById('formContent').innerHTML = html;
-  modal.show();
 }
 
-function openRoomModal(room, period) {
-  document.getElementById('entryCategory').value = 'room'; document.getElementById('modalTitle').innerText = `${room} - ${period}`;
-  document.getElementById('formContent').innerHTML = `<input type="hidden" id="inputRoom" value="${room}"><input type="hidden" id="inputPeriod" value="${period}"><div class="mb-3"><label>授業・内容</label><input type="text" id="inputContent" class="form-control" placeholder="例: 3-5 情報"></div><div class="mb-3"><label>予約者</label><select id="inputReserver" class="form-select">${getStaffOptionsHtml()}</select></div>`;
-  modal.show();
+function openRoomModal(room, period) { openEditModal('room', { room: room, period: period, content: '', reserver: '' }); }
+function openFixedRoomModal(room, period, org, owner) {
+  document.getElementById('entryCategory').value = 'room'; document.getElementById('entryId').value = '';
+  const staffOpts = '<option value="">選択</option>' + staffList.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+  document.getElementById('modalTitle').innerText = '教室変更（固定設定）';
+  document.getElementById('formContent').innerHTML = `<div class="alert alert-secondary mb-3"><small>通常: ${org} (${owner})</small></div><input type="hidden" id="inputRoom" value="${room}"><input type="hidden" id="inputPeriod" value="${period}"><div class="mb-3"><label>変更内容</label><div class="input-group"><input type="text" id="inputContent" class="form-control" value="${org}"><button type="button" class="btn btn-outline-danger" onclick="document.getElementById('inputContent').value='中止'">中止</button></div></div><div class="mb-3"><label>変更予約者</label><select id="inputReserver" class="form-select">${staffOpts}</select></div>`;
+  if(modal) modal.show();
 }
 
-function openFixedRoomModal(room, period, original, owner) {
-  document.getElementById('entryCategory').value = 'room'; document.getElementById('modalTitle').innerText = `${room} - ${period} (固定設定)`;
-  document.getElementById('formContent').innerHTML = `<div class="alert alert-secondary py-2 mb-3"><small>通常設定:</small><br><strong>${original}</strong> <small>(${owner||''})</small></div><p class="small text-muted">本日分の変更を行います。</p><input type="hidden" id="inputRoom" value="${room}"><input type="hidden" id="inputPeriod" value="${period}"><div class="mb-3"><label>変更内容</label><div class="input-group"><input type="text" id="inputContent" class="form-control" value="${original}"><button type="button" class="btn btn-outline-danger" onclick="setCancelContent()">中止にする</button></div></div><div class="mb-3"><label>変更予約者</label><select id="inputReserver" class="form-select">${getStaffOptionsHtml()}</select></div>`;
-  modal.show();
-}
-function setCancelContent() { document.getElementById('inputContent').value = '中止'; }
-
-// =============================================================================
-// フォーム送信・削除
-// =============================================================================
-
-/**
- * フォームを送信
- */
 function submitForm() {
-  try {
-    const cat = document.getElementById('entryCategory').value;
-    const data = { date: document.getElementById('datePicker').value };
-
-    // カテゴリごとにデータを収集
-    if (cat === 'daily') {
-      data.time = document.getElementById('inputTime')?.value || '';
-      data.content = document.getElementById('inputContent')?.value || '';
-      data.note = document.getElementById('inputNote')?.value || '';
-
-      if (!data.content.trim()) {
-        showErrorToast('内容を入力してください');
-        return;
-      }
-    } else if (cat === 'announce') {
-      data.type = document.getElementById('announceType').value;
-      data.priority = document.querySelector('input[name="prio"]:checked')?.value || '・';
-      data.target = document.getElementById('inputTarget')?.value || '';
-      data.content = document.getElementById('inputContent')?.value || '';
-      data.reporter = document.getElementById('inputReporter')?.value || '';
-
-      if (!data.content.trim() || !data.reporter) {
-        showErrorToast('内容と報告者を入力してください');
-        return;
-      }
-    } else if (cat === 'trip') {
-      data.staff = document.getElementById('inputStaff')?.value || '';
-      data.purpose = document.getElementById('inputPurpose')?.value || '';
-      data.location = document.getElementById('inputLocation')?.value || '';
-      data.time = document.getElementById('inputTime')?.value || '1日';
-      data.note = document.getElementById('inputNote')?.value || '';
-
-      if (!data.staff || !data.purpose || !data.location) {
-        showErrorToast('職員、用務、場所を入力してください');
-        return;
-      }
-    } else if (cat === 'leave') {
-      data.staff = document.getElementById('inputStaff')?.value || '';
-      data.type = document.getElementById('inputType')?.value || '';
-      data.time = document.getElementById('inputTime')?.value || '1日';
-
-      if (!data.staff || !data.type) {
-        showErrorToast('職員と種別を入力してください');
-        return;
-      }
-    } else if (cat === 'meeting') {
-      data.name = document.getElementById('inputName')?.value || '';
-      data.time = document.getElementById('inputTime')?.value || '放課後';
-      data.place = document.getElementById('inputPlace')?.value || '会議室';
-
-      if (!data.name.trim()) {
-        showErrorToast('会議名を入力してください');
-        return;
-      }
-    } else if (cat === 'room') {
-      data.room = document.getElementById('inputRoom')?.value || '';
-      data.period = document.getElementById('inputPeriod')?.value || '';
-      data.content = document.getElementById('inputContent')?.value || '';
-      data.reserver = document.getElementById('inputReserver')?.value || '';
-
-      if (!data.content.trim()) {
-        showErrorToast('授業・内容を入力してください');
-        return;
-      }
-    }
-
-    showLoading(true);
-    modal.hide();
-
-    console.log('Submitting form:', { category: cat, data });
-
-    google.script.run
-      .withSuccessHandler(function() {
-        showSuccessToast(MESSAGE.SAVE_SUCCESS);
-        loadData();
-      })
-      .withFailureHandler(function(error) {
-        console.error('Save error:', error);
-        showErrorToast(`${MESSAGE.SAVE_ERROR}: ${error.message || error}`);
-        showLoading(false);
-      })
-      .saveData(cat, data);
-
-  } catch (e) {
-    console.error('submitForm error:', e);
-    showErrorToast(MESSAGE.SAVE_ERROR);
-    showLoading(false);
+  const cat = document.getElementById('entryCategory').value;
+  const id = document.getElementById('entryId').value;
+  const data = { id: id, date: document.getElementById('datePicker').value };
+  
+  if(cat === 'task') {
+    data.name = document.getElementById('inputName').value; data.content = document.getElementById('inputContent').value; data.due_date = document.getElementById('inputDueDate').value;
+    if(!data.name || !data.content) return alert('担当者と内容を入力してください');
+  } else if(cat === 'daily') {
+    data.time = document.getElementById('inputTime').value; data.content = document.getElementById('inputContent').value; data.note = document.getElementById('inputNote').value;
+  } else if(cat === 'meeting') {
+    data.name = document.getElementById('inputName').value; data.time = document.getElementById('inputTime').value; data.place = document.getElementById('inputPlace').value;
+  } else if(cat === 'trip' || cat === 'leave') {
+    data.staff = document.getElementById('inputStaff').value; data.time = document.getElementById('inputTime').value;
+    if(cat === 'trip') { data.purpose = document.getElementById('inputPurpose').value; data.location = document.getElementById('inputLocation').value; }
+    else { data.type = document.getElementById('inputType').value; }
+  } else if(cat === 'announce') {
+    data.priority = document.querySelector('input[name="prio"]:checked').value; data.target = document.getElementById('inputTarget').value; data.content = document.getElementById('inputContent').value; data.reporter = document.getElementById('inputReporter').value; data.type = document.getElementById('announceType').value;
+  } else if(cat === 'room') {
+    data.room = document.getElementById('inputRoom').value; data.period = document.getElementById('inputPeriod').value; data.content = document.getElementById('inputContent').value; data.reserver = document.getElementById('inputReserver').value;
   }
-}
-
-/**
- * データを削除
- * @param {string} id - データID
- * @param {string} category - カテゴリ
- * @param {string} name - 表示名
- */
-function deleteItem(id, category, name) {
-  if (!confirm(`「${name}」を削除しますか？`)) return;
-
+  
+  if(modal) modal.hide();
   showLoading(true);
-  console.log('Deleting item:', { id, category, name });
-
-  google.script.run
-    .withSuccessHandler(function() {
-      showSuccessToast(MESSAGE.DELETE_SUCCESS);
-      loadData();
-    })
-    .withFailureHandler(function(error) {
-      console.error('Delete error:', error);
-      showErrorToast(`${MESSAGE.DELETE_ERROR}: ${error.message || error}`);
-      showLoading(false);
-    })
-    .deleteEvent(id, category);
+  google.script.run.withSuccessHandler(() => loadData()).withFailureHandler(onFailure).saveData(cat, data);
 }
 
-/**
- * 教室予約の上書きを削除（固定設定に戻す）
- * @param {string} id - データID
- * @param {string} content - 内容
- */
-function deleteOverride(id, content) {
-  if (!confirm(`「${content}」の設定を削除し、固定設定に戻しますか？`)) return;
-
-  showLoading(true);
-  console.log('Deleting override:', { id, content });
-
-  google.script.run
-    .withSuccessHandler(function() {
-      showSuccessToast(MESSAGE.DELETE_SUCCESS);
-      loadData();
-    })
-    .withFailureHandler(function(error) {
-      console.error('Delete override error:', error);
-      showErrorToast(`${MESSAGE.DELETE_ERROR}: ${error.message || error}`);
-      showLoading(false);
-    })
-    .deleteEvent(id, 'room');
-}
-
-/**
- * 行事情報をクリップボードにコピー
- * @param {string} target - 'today' または 'tomorrow'
- */
-function copyDailyInfo(target = 'today') {
-  try {
-    let text, items;
-
-    if (target === 'today') {
-      text = `【${document.getElementById('displayDate').innerText}】\n`;
-      items = currentData.today?.daily || [];
-    } else {
-      text = `【${document.getElementById('displayDateTomorrow').innerText}】\n`;
-      items = currentData.tomorrow?.daily || [];
-    }
-
-    if (items.length === 0) {
-      text += "予定なし";
-    } else {
-      items.forEach(d => {
-        const time = d.time ? d.time + ' ' : '';
-        const note = d.note ? '(' + d.note + ')' : '';
-        text += `・${time}${d.content} ${note}\n`;
-      });
-    }
-
-    navigator.clipboard.writeText(text)
-      .then(() => {
-        showSuccessToast(MESSAGE.COPY_SUCCESS);
-      })
-      .catch((error) => {
-        console.error('Copy error:', error);
-        showErrorToast(MESSAGE.COPY_ERROR);
-      });
-  } catch (e) {
-    console.error('copyDailyInfo error:', e);
-    showErrorToast(MESSAGE.COPY_ERROR);
-  }
-}
+function toggleTask(id, checked) { google.script.run.withSuccessHandler(() => loadData()).withFailureHandler(onFailure).toggleTaskCheck(id, checked); }
+function deleteItem(id, cat, name) { if(!confirm(`「${name}」を削除しますか？`)) return; showLoading(true); google.script.run.withSuccessHandler(() => loadData()).withFailureHandler(onFailure).deleteEvent(id, cat); }
+function onFailure(e) { alert('エラー: ' + e.message); showLoading(false); }
+function escapeHtml(t) { if(!t)return ''; return t.toString().replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m])); }
+function loadWeather() { google.script.run.withSuccessHandler(j=>{ try{const d=JSON.parse(j);document.getElementById('weatherInfo').innerHTML=`<i class="bi bi-sun-fill text-warning fs-4 me-1"></i><span class="fw-bold">${Math.round(d.current.temperature_2m)}°C</span>`}catch(e){}}).getWeatherData(); }
+function showLoading(b) { const l=document.getElementById('loading'); if(l) l.style.display = b?'flex':'none'; }
 </script>

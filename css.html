@@ -1,682 +1,251 @@
 <style>
   /**
-   * 職員朝礼伝達システム - Modern Design (v7.0)
-   * フラットデザイン・グラデーションなし
+   * 職員朝礼伝達システム - Strong & Accessible Design (v10.1)
    */
 
-  /* =============================================================================
-     CSS Variables - モダンなカラーパレット
-     ============================================================================= */
   :root {
-    /* Primary Colors - 深いブルー系 */
-    --color-primary: #2C3E50;
-    --color-primary-light: #34495E;
-    --color-primary-dark: #1A252F;
+    /* Main Colors - 視認性を高めるため濃いめに */
+    --primary-color: #2563eb;      /* Blue */
+    --secondary-color: #475569;    /* Slate */
+    --success-color: #059669;      /* Emerald */
+    --danger-color: #dc2626;       /* Red */
+    --info-color: #0891b2;         /* Cyan */
+    --purple-color: #7c3aed;       /* Violet */
 
-    /* Secondary Colors - アクセントカラー */
-    --color-accent: #3498DB;
-    --color-accent-light: #5DADE2;
-    --color-accent-dark: #2874A6;
+    /* Backgrounds */
+    --bg-body: #f1f5f9;
+    --bg-card: #ffffff;
 
-    /* Status Colors */
-    --color-success: #27AE60;
-    --color-warning: #F39C12;
-    --color-danger: #E74C3C;
-    --color-info: #16A085;
+    /* Header Backgrounds (Stronger Colors) */
+    --header-bg-primary: #dbeafe;
+    --header-bg-success: #d1fae5;
+    --header-bg-danger: #fee2e2;
+    --header-bg-info: #cffafe;
+    --header-bg-purple: #ede9fe;
+    --header-bg-secondary: #e2e8f0;
 
-    /* Neutral Colors */
-    --color-white: #FFFFFF;
-    --color-gray-50: #F8F9FA;
-    --color-gray-100: #ECF0F1;
-    --color-gray-200: #D5DBDB;
-    --color-gray-300: #BDC3C7;
-    --color-gray-400: #95A5A6;
-    --color-gray-500: #7F8C8D;
-    --color-gray-600: #5D6D7E;
-    --color-gray-700: #34495E;
-    --color-gray-800: #2C3E50;
-    --color-gray-900: #1C2833;
+    /* Text Colors for Headers */
+    --header-text-primary: #1e40af;
+    --header-text-success: #065f46;
+    --header-text-danger: #991b1b;
+    --header-text-info: #155e75;
+    --header-text-purple: #5b21b6;
+    --header-text-secondary: #1e293b;
 
-    /* Shadows */
-    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.05);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
-    --shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.15);
-
-    /* Border Radius */
-    --radius-sm: 6px;
+    /* UI Elements */
     --radius-md: 12px;
-    --radius-lg: 16px;
-    --radius-xl: 24px;
-
-    /* Spacing */
-    --spacing-xs: 0.5rem;
-    --spacing-sm: 1rem;
-    --spacing-md: 1.5rem;
-    --spacing-lg: 2rem;
-    --spacing-xl: 3rem;
-
-    /* Transitions */
-    --transition-fast: 150ms ease-in-out;
-    --transition-base: 250ms ease-in-out;
-    --transition-slow: 350ms ease-in-out;
-  }
-
-  /* =============================================================================
-     Base Styles
-     ============================================================================= */
-  * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.1);
+    --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1);
   }
 
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial,
-                 "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
-    font-size: 15px;
-    line-height: 1.6;
-    background: var(--color-gray-50);
-    color: var(--color-gray-800);
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    font-family: "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+    background-color: var(--bg-body);
+    color: #334155;
+    padding-bottom: 60px;
   }
 
-  /* =============================================================================
-     Navigation Bar - モダンデザイン
-     ============================================================================= */
+  /* Navigation */
   .navbar {
-    background: var(--color-white) !important;
-    border-bottom: 1px solid var(--color-gray-200);
-    box-shadow: var(--shadow-sm);
-    padding: 0.75rem 1.5rem !important;
+    background: #fff;
+    border-bottom: 1px solid #cbd5e1;
+    padding: 0.75rem 1rem !important;
   }
-
-  .navbar .container-fluid {
-    max-width: 1400px;
-    padding: 0;
-    flex-wrap: nowrap;
+  
+  /* User Select Capsule */
+  .user-select-capsule {
+    display: flex;
+    align-items: center;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 50px;
+    padding: 0.25rem 0.5rem 0.25rem 1rem;
+    margin-left: 1rem;
   }
-
-  .navbar-brand {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--color-primary) !important;
-    letter-spacing: -0.5px;
-    white-space: nowrap;
-  }
-
-  .navbar .btn {
-    border: 1px solid var(--color-gray-200);
-    background: var(--color-white);
-    color: var(--color-gray-700);
-    font-weight: 500;
-    transition: all var(--transition-base);
-    padding: 0.5rem 0.75rem;
-    font-size: 0.875rem;
-    text-transform: none;
-    letter-spacing: normal;
-  }
-
-  .navbar .btn:hover {
-    background: var(--color-gray-50);
-    border-color: var(--color-accent);
-    color: var(--color-accent);
-    transform: translateY(-1px);
-  }
-
-  .navbar input[type="date"] {
-    border: 1px solid var(--color-gray-200);
-    background: var(--color-white);
-    color: var(--color-gray-800);
-    border-radius: var(--radius-sm);
-    padding: 0.5rem 0.75rem;
-    font-weight: 500;
-    transition: all var(--transition-base);
-  }
-
-  .navbar input[type="date"]:focus {
+  .user-select-capsule select {
+    border: none;
+    background: transparent;
+    font-weight: bold;
+    color: #334155;
+    cursor: pointer;
     outline: none;
-    border-color: var(--color-accent);
-    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
   }
 
-  /* =============================================================================
-     Container
-     ============================================================================= */
-  .container-fluid {
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: var(--spacing-lg);
+  /* Date Controller */
+  .date-controller {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.2rem;
+    font-weight: 800;
+    color: #1e293b;
+    background: #fff;
+    padding: 0.4rem 1rem;
+    border-radius: 50px;
+    border: 1px solid #cbd5e1;
   }
 
-  /* =============================================================================
-     Cards - モダンなカードデザイン
-     ============================================================================= */
+  .btn-nav-arrow {
+    background: none; border: none; font-weight: bold; cursor: pointer; color: #64748b;
+  }
+  .btn-nav-arrow:hover { color: var(--primary-color); }
+
+  /* Cards */
   .card {
-    background: var(--color-white);
     border: none;
     border-radius: var(--radius-md);
-    box-shadow: var(--shadow-md);
-    margin-bottom: var(--spacing-md);
+    box-shadow: var(--shadow-sm);
+    background: var(--bg-card);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
-    transition: all var(--transition-base);
-  }
-
-  .card:hover {
-    box-shadow: var(--shadow-lg);
-    transform: translateY(-2px);
   }
 
   .card-header {
-    background: var(--color-white);
-    border-bottom: 2px solid var(--color-gray-100);
-    padding: var(--spacing-md);
+    padding: 0.75rem 1rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
-  }
-
-  .card-header h5,
-  .card-header h6 {
-    margin: 0;
     font-weight: 700;
-    letter-spacing: -0.3px;
   }
 
-  .card-body {
-    padding: var(--spacing-md);
+  /* Header Variants (Stronger) */
+  .header-primary { background: var(--header-bg-primary); color: var(--header-text-primary); }
+  .header-success { background: var(--header-bg-success); color: var(--header-text-success); }
+  .header-danger  { background: var(--header-bg-danger); color: var(--header-text-danger); }
+  .header-info    { background: var(--header-bg-info); color: var(--header-text-info); }
+  .header-purple  { background: var(--header-bg-purple); color: var(--header-text-purple); }
+  .header-secondary { background: var(--header-bg-secondary); color: var(--header-text-secondary); }
+
+  .header-title-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.1rem;
+  }
+  
+  .header-meta {
+    font-size: 0.9rem;
+    font-weight: normal;
+    opacity: 0.8;
+    margin-left: 0.5rem;
+    padding-left: 0.5rem;
+    border-left: 1px solid currentColor;
   }
 
-  /* カードの左ボーダーアクセント（グラデーションの代わり） */
-  .border-primary {
-    border-left: 4px solid var(--color-accent) !important;
+  /* Scrollable Body */
+  .card-body-scroll {
+    min-height: 300px;
+    max-height: 400px;
+    overflow-y: auto;
+    scrollbar-width: thin;
   }
 
-  .border-danger {
-    border-left: 4px solid var(--color-danger) !important;
-  }
-
-  .border-info {
-    border-left: 4px solid var(--color-info) !important;
-  }
-
-  /* =============================================================================
-     Buttons - モダンなボタンデザイン
-     ============================================================================= */
-  .btn {
-    border: none;
-    border-radius: var(--radius-sm);
-    font-weight: 600;
-    padding: 0.5rem 1.25rem;
-    transition: all var(--transition-base);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    font-size: 0.875rem;
-  }
-
-  .btn:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-  }
-
-  .btn:active {
-    transform: translateY(0);
-  }
-
-  .btn-primary {
-    background: var(--color-accent);
-    color: var(--color-white);
-  }
-
-  .btn-primary:hover {
-    background: var(--color-accent-dark);
-  }
-
-  .btn-success {
-    background: var(--color-success);
-    color: var(--color-white);
-  }
-
-  .btn-success:hover {
-    background: #229954;
-  }
-
-  .btn-danger {
-    background: var(--color-danger);
-    color: var(--color-white);
-  }
-
-  .btn-danger:hover {
-    background: #C0392B;
-  }
-
-  .btn-outline-primary {
-    border: 2px solid var(--color-accent);
-    color: var(--color-accent);
-    background: transparent;
-  }
-
-  .btn-outline-primary:hover {
-    background: var(--color-accent);
-    color: var(--color-white);
-  }
-
-  /* =============================================================================
-     Badges - モダンなバッジ
-     ============================================================================= */
-  .badge {
-    padding: 0.4rem 0.8rem;
-    border-radius: var(--radius-sm);
-    font-weight: 600;
-    font-size: 0.75rem;
-    letter-spacing: 0.3px;
-  }
-
-  .badge.bg-primary {
-    background: var(--color-accent) !important;
-  }
-
-  .badge.bg-success {
-    background: var(--color-success) !important;
-  }
-
-  .badge.bg-danger {
-    background: var(--color-danger) !important;
-  }
-
-  .badge.bg-secondary {
-    background: var(--color-gray-400) !important;
-  }
-
-  .badge.bg-info {
-    background: var(--color-info) !important;
-  }
-
-  /* =============================================================================
-     List Groups
-     ============================================================================= */
+  /* List Items */
   .list-group-item {
     border: none;
-    border-bottom: 1px solid var(--color-gray-100);
-    padding: var(--spacing-md);
-    transition: all var(--transition-fast);
-  }
-
-  .list-group-item:hover {
-    background: var(--color-gray-50);
-  }
-
-  .list-group-item:last-child {
-    border-bottom: none;
-  }
-
-  /* =============================================================================
-     Display Date Section
-     ============================================================================= */
-  .display-date-section {
-    background: var(--color-primary);
-    color: var(--color-white);
-    padding: var(--spacing-md);
-    border-radius: var(--radius-sm);
+    border-bottom: 1px solid #f1f5f9;
+    padding: 0.75rem 1rem;
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: start;
   }
-
-  .display-date-section h4 {
-    margin: 0;
-    font-weight: 700;
-    letter-spacing: -0.5px;
+  
+  .btn-action-group {
+    display: flex;
+    gap: 0.25rem;
+    opacity: 0.6;
+    transition: opacity 0.2s;
   }
-
-  /* =============================================================================
-     Priority High - 重要マーク
-     ============================================================================= */
-  .priority-high {
-    display: inline-block;
-    background: var(--color-danger);
-    color: var(--color-white);
-    padding: 0.25rem 0.75rem;
-    border-radius: var(--radius-sm);
-    font-weight: 700;
-    font-size: 0.75rem;
-    margin-right: 0.5rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
+  .list-group-item:hover .btn-action-group { opacity: 1; }
 
   /* =============================================================================
-     Matrix Table - 特別教室予約
+     Matrix Table (Classroom) - Revised
      ============================================================================= */
   .matrix-table {
+    width: 100%;
     border-collapse: separate;
     border-spacing: 0;
-    width: 100%;
   }
 
-  .matrix-table th,
-  .matrix-table td {
+  /* Header Cells (Period: 1限, 2限...) - Stick to Top */
+  .matrix-table thead th {
+    background: #f1f5f9;
     padding: 0.75rem;
-    text-align: center;
-    border: 1px solid var(--color-gray-200);
-    font-size: 0.875rem;
-    transition: all var(--transition-fast);
-  }
-
-  .matrix-table th {
-    background: var(--color-gray-100);
-    font-weight: 700;
-    color: var(--color-gray-700);
     position: sticky;
     top: 0;
-    z-index: 10;
-  }
-
-  .matrix-table td {
-    cursor: pointer;
-    background: var(--color-white);
-    min-height: 60px;
-  }
-
-  .matrix-table td:hover {
-    background: var(--color-gray-50);
-    box-shadow: inset 0 0 0 2px var(--color-accent);
-  }
-
-  .cell-occupied {
-    background: #D5F4E6 !important;
-    color: var(--color-success);
-    font-weight: 600;
-  }
-
-  .cell-occupied:hover {
-    background: #A9DFBF !important;
-  }
-
-  .cell-fixed {
-    background: var(--color-gray-100) !important;
-    color: var(--color-gray-600);
-    border: 2px dashed var(--color-gray-300) !important;
-  }
-
-  .cell-fixed:hover {
-    background: var(--color-gray-200) !important;
-  }
-
-  .cell-fixed::before {
-    content: "🔒 ";
-    opacity: 0.6;
-  }
-
-  .cell-cancelled {
-    background: #FADBD8 !important;
-    color: var(--color-danger);
-    text-decoration: line-through;
-  }
-
-  /* =============================================================================
-     Fixed Meeting Row
-     ============================================================================= */
-  .fixed-meeting {
-    background: var(--color-gray-50);
-    border-left: 3px solid var(--color-gray-500);
-  }
-
-  .fixed-meeting td:first-child {
-    position: relative;
-    padding-left: 3rem;
-  }
-
-  .fixed-meeting td:first-child::before {
-    content: "定例";
-    position: absolute;
-    left: 0.75rem;
-    background: var(--color-gray-500);
-    color: var(--color-white);
-    padding: 0.15rem 0.4rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.65rem;
+    z-index: 20; /* Higher than row headers */
+    border-bottom: 2px solid #cbd5e1;
+    text-align: center;
+    vertical-align: middle;
     font-weight: 700;
-    letter-spacing: 0.5px;
+    color: #475569;
   }
 
-  /* =============================================================================
-     Modal
-     ============================================================================= */
-  .modal-content {
-    border: none;
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-xl);
-  }
-
-  .modal-header {
-    background: var(--color-gray-50);
-    border-bottom: 2px solid var(--color-gray-200);
-    padding: var(--spacing-md);
-  }
-
-  .modal-title {
-    font-weight: 700;
-    color: var(--color-primary);
-  }
-
-  .modal-body {
-    padding: var(--spacing-lg);
-  }
-
-  .modal-footer {
-    background: var(--color-gray-50);
-    border-top: 1px solid var(--color-gray-200);
-    padding: var(--spacing-md);
-  }
-
-  /* =============================================================================
-     Form Controls
-     ============================================================================= */
-  .form-control,
-  .form-select {
-    border: 1px solid var(--color-gray-200);
-    border-radius: var(--radius-sm);
-    padding: 0.625rem 0.875rem;
-    transition: all var(--transition-base);
-    font-size: 0.9375rem;
-  }
-
-  .form-control:focus,
-  .form-select:focus {
-    outline: none;
-    border-color: var(--color-accent);
-    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
-  }
-
-  .form-label {
-    font-weight: 600;
-    color: var(--color-gray-700);
-    margin-bottom: 0.5rem;
-    font-size: 0.875rem;
-  }
-
-  /* =============================================================================
-     Loading Overlay
-     ============================================================================= */
-  .loading-overlay {
-    position: fixed;
-    top: 0;
+  /* Row Header Cells (Room Name) - Stick to Left */
+  .matrix-table tbody th {
+    background: #f8fafc;
+    padding: 0.75rem;
+    position: sticky;
     left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(255, 255, 255, 0.95);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 9999;
-    backdrop-filter: blur(8px);
+    z-index: 10;
+    border-right: 2px solid #cbd5e1;
+    border-bottom: 1px solid #e2e8f0;
+    text-align: center;
+    vertical-align: middle; /* 上下中央揃えを適用 */
+    font-weight: 700;
+    color: #334155;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.05); /* 固定列の影 */
   }
 
-  .spinner-border {
-    width: 3rem;
-    height: 3rem;
-    border-width: 0.3rem;
-    border-color: var(--color-accent);
-    border-right-color: transparent;
-  }
-
-  /* =============================================================================
-     Toast Messages
-     ============================================================================= */
-  #customToast .toast {
-    min-width: 350px;
-    border: none;
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-lg);
-    animation: slideInDown 0.3s ease-out;
-  }
-
-  @keyframes slideInDown {
-    from {
-      transform: translate(-50%, -100%);
-      opacity: 0;
-    }
-    to {
-      transform: translate(-50%, 0);
-      opacity: 1;
-    }
-  }
-
-  #customToast .toast-body {
-    padding: 1.25rem;
-    font-size: 0.9375rem;
+  /* Data Cells */
+  .matrix-table td {
+    border: 1px solid #e2e8f0;
+    padding: 0.5rem;
+    height: 100px;
+    vertical-align: middle; /* データセルも上下中央 */
+    text-align: center;
+    cursor: pointer;
+    font-size: 1rem;
     font-weight: 500;
   }
-
-  /* =============================================================================
-     Icon Buttons
-     ============================================================================= */
-  .btn-icon {
-    width: 36px;
-    height: 36px;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-sm);
-    transition: all var(--transition-fast);
+  
+  .matrix-table td:hover {
+    background: #f0f9ff;
+    box-shadow: inset 0 0 0 2px var(--primary-color);
   }
-
-  .btn-icon:hover {
-    transform: scale(1.1);
+  
+  /* Top-Left Corner Cell */
+  .matrix-table thead th:first-child {
+    position: sticky;
+    left: 0;
+    top: 0;
+    z-index: 30; /* Highest priority */
+    background: #f1f5f9;
+    border-right: 2px solid #cbd5e1;
   }
+  
+  .cell-occupied { background: #d1fae5 !important; color: #065f46; }
+  .cell-fixed { background: #f3f4f6 !important; color: #64748b; border: 2px dashed #cbd5e1 !important; }
+  .cell-cancelled { background: #fee2e2 !important; text-decoration: line-through; color: #991b1b; }
 
-  /* =============================================================================
-     Utility Classes
-     ============================================================================= */
-  .text-primary {
-    color: var(--color-accent) !important;
+  /* Task Item */
+  .task-item {
+    display: flex; align-items: center; gap: 0.5rem;
   }
-
-  .text-danger {
-    color: var(--color-danger) !important;
+  .task-check {
+    width: 20px; height: 20px; cursor: pointer;
   }
+  .task-content { flex: 1; }
+  .task-meta { font-size: 0.8rem; color: #64748b; }
+  .task-done { text-decoration: line-through; opacity: 0.6; }
 
-  .text-success {
-    color: var(--color-success) !important;
+  /* Loading */
+  .loading-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(255,255,255,0.7); display: flex; justify-content: center; align-items: center;
+    z-index: 9999;
   }
-
-  .text-purple {
-    color: #9B59B6 !important;
-  }
-
-  .bg-light {
-    background: var(--color-gray-50) !important;
-  }
-
-  /* =============================================================================
-     Responsive Design
-     ============================================================================= */
-  @media (max-width: 768px) {
-    .container-fluid {
-      padding: var(--spacing-sm);
-    }
-
-    .card {
-      margin-bottom: var(--spacing-sm);
-    }
-
-    .card-header,
-    .card-body {
-      padding: var(--spacing-sm);
-    }
-
-    .navbar {
-      padding: 0.5rem 0.75rem !important;
-    }
-
-    .navbar .container-fluid {
-      flex-wrap: wrap;
-      gap: 0.5rem;
-    }
-
-    .navbar-brand {
-      font-size: 1.25rem;
-    }
-
-    .navbar .btn {
-      padding: 0.4rem 0.6rem;
-      font-size: 0.8rem;
-    }
-
-    .navbar input[type="date"] {
-      font-size: 0.85rem;
-      padding: 0.4rem 0.6rem;
-    }
-
-    .matrix-table th,
-    .matrix-table td {
-      padding: 0.5rem;
-      font-size: 0.75rem;
-    }
-  }
-
-  /* =============================================================================
-     Print Styles
-     ============================================================================= */
-  @media print {
-    .navbar,
-    .btn,
-    .loading-overlay,
-    #customToast {
-      display: none !important;
-    }
-
-    .card {
-      page-break-inside: avoid;
-      box-shadow: none;
-      border: 1px solid var(--color-gray-300);
-    }
-
-    body {
-      background: white;
-    }
-  }
-
-  /* =============================================================================
-     Accessibility
-     ============================================================================= */
-  .visually-hidden {
-    position: absolute !important;
-    width: 1px !important;
-    height: 1px !important;
-    padding: 0 !important;
-    margin: -1px !important;
-    overflow: hidden !important;
-    clip: rect(0, 0, 0, 0) !important;
-    white-space: nowrap !important;
-    border: 0 !important;
-  }
-
-  :focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
-  }
+  .visually-hidden { display: none; }
 </style>

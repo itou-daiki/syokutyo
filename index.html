@@ -4,295 +4,199 @@
   <base target="_top">
   <meta charset="utf-8">
   <title>職員朝礼伝達システム</title>
-  <!-- Updated: 2025-12-11 -->
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
   <?!= include('css'); ?>
 </head>
 <body>
 
-  <!-- Loading Overlay -->
-  <div id="loading" class="loading-overlay" style="display: none;" aria-label="読み込み中">
-    <div class="spinner-border" role="status">
-      <span class="visually-hidden">読み込み中...</span>
-    </div>
+  <div id="loading" class="loading-overlay" style="display: none;">
+    <div class="spinner-border text-primary" role="status"></div>
   </div>
 
-  <!-- Navigation Bar -->
   <nav class="navbar sticky-top">
     <div class="container-fluid d-flex align-items-center justify-content-between">
-      <!-- Brand -->
-      <a class="navbar-brand d-flex align-items-center" href="#" style="gap: 0.5rem;">
-        <i class="bi bi-journal-text"></i>
-        <span>朝礼伝達システム</span>
-      </a>
-
-      <!-- Date Navigation & Weather -->
-      <div class="d-flex align-items-center" style="gap: 0.5rem; flex-wrap: nowrap;">
-        <!-- Date Controls -->
-        <button class="btn" onclick="changeDate(-1)" title="前日">
-          <i class="bi bi-chevron-left"></i>
-        </button>
-        <button class="btn" onclick="setToday()" title="今日">
-          <i class="bi bi-calendar-today"></i>
-        </button>
-        <button class="btn" onclick="changeDate(1)" title="翌日">
-          <i class="bi bi-chevron-right"></i>
-        </button>
-        <input type="date" id="datePicker" class="form-control" onchange="onDatePickerChange()">
-        <button class="btn btn-outline-primary" onclick="loadData()" title="更新">
-          <i class="bi bi-arrow-clockwise"></i>
-        </button>
-
-        <!-- Weather Info (Compact) -->
-        <div id="weatherInfo" class="d-none d-xl-flex align-items-center" style="gap: 0.5rem; padding: 0.5rem 1rem; background: var(--color-gray-50); border-radius: 6px; margin-left: 0.5rem; white-space: nowrap;">
-          <div class="spinner-border spinner-border-sm text-warning" role="status">
-            <span class="visually-hidden">読み込み中...</span>
-          </div>
+      <div class="d-flex align-items-center">
+        <a class="navbar-brand d-flex align-items-center gap-2" href="#">
+          <i class="bi bi-journal-text"></i>
+          <span class="d-none d-sm-inline">朝礼伝達</span>
+        </a>
+        
+        <div class="user-select-capsule d-none d-md-flex">
+          <i class="bi bi-person-circle text-secondary me-2"></i>
+          <select id="currentUserSelect" onchange="changeCurrentUser()">
+            <option value="">(全員表示)</option>
+          </select>
         </div>
+      </div>
+
+      <div class="date-controller position-relative">
+        <button class="btn-nav-arrow" onclick="changeDate(-1)">＜</button>
+        
+        <label for="datePicker" id="navDateDisplay" style="cursor: pointer; min-width: 140px; text-align: center;">
+          Loading...
+        </label>
+        
+        <button class="btn-nav-arrow" onclick="changeDate(1)">＞</button>
+
+        <input type="date" id="datePicker" 
+               style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10;" 
+               onchange="onDatePickerChange()">
+      </div>
+
+      <div class="d-flex align-items-center gap-2">
+        <button class="btn btn-sm btn-outline-secondary rounded-circle" style="width:36px;height:36px;" onclick="setToday()" title="今日"><i class="bi bi-calendar-event"></i></button>
+        <button class="btn btn-sm btn-outline-primary rounded-circle" style="width:36px;height:36px;" onclick="loadData()" title="更新"><i class="bi bi-arrow-clockwise"></i></button>
+        <div id="weatherInfo"></div>
       </div>
     </div>
   </nav>
 
-  <!-- Main Container -->
-  <div class="container-fluid">
+  <div class="container-fluid pt-4">
 
-    <!-- Daily Events Section - Today & Tomorrow -->
-    <div class="row g-3 mb-3">
-      <!-- Today's Events -->
+    <div class="row g-4 mb-4">
       <div class="col-lg-6">
-        <div class="card border-primary h-100">
-          <div class="card-header">
-            <div class="d-flex align-items-center gap-2">
-              <i class="bi bi-calendar-check-fill text-primary fs-5"></i>
-              <h5 class="mb-0">本日の行事</h5>
+        <div class="card h-100">
+          <div class="card-header header-primary">
+            <div class="header-title-wrapper">
+              <i class="bi bi-calendar-check-fill"></i>
+              <span>本日の行事</span>
+              <span id="headerTodayInfo" class="header-meta"></span>
             </div>
-            <div class="d-flex gap-2">
-              <button class="btn btn-sm btn-outline-secondary" onclick="copyDailyInfo('today')" title="コピー">
-                <i class="bi bi-clipboard"></i>
-              </button>
-              <button class="btn btn-sm btn-primary" onclick="openModal('daily')">
-                <i class="bi bi-plus-lg me-1"></i>追加
-              </button>
-            </div>
+            <button class="btn btn-sm btn-light text-primary" onclick="openModal('daily')"><i class="bi bi-plus-lg"></i></button>
           </div>
-          <div class="card-body p-0">
-            <!-- Date Display -->
-            <div class="display-date-section">
-              <h4 id="displayDate" class="mb-0"></h4>
-              <span class="badge bg-light text-dark" id="dailyCount" style="font-size: 0.875rem;">0件</span>
-            </div>
-            <!-- Events List -->
-            <ul class="list-group list-group-flush" id="dailyList">
-              <li class="list-group-item text-muted text-center py-5">
-                <i class="bi bi-calendar3 fs-1 d-block mb-2 opacity-25"></i>
-                予定はありません
-              </li>
-            </ul>
+          <div class="card-body p-0 card-body-scroll">
+            <ul class="list-group list-group-flush" id="dailyList"></ul>
           </div>
         </div>
       </div>
 
-      <!-- Tomorrow's Events -->
       <div class="col-lg-6">
-        <div class="card h-100" style="border-left: 4px solid var(--color-accent-light) !important;">
-          <div class="card-header">
-            <div class="d-flex align-items-center gap-2">
-              <i class="bi bi-calendar-plus fs-5" style="color: var(--color-accent-light);"></i>
-              <h5 class="mb-0" style="color: var(--color-accent-light);">明日の行事</h5>
-            </div>
-            <div class="d-flex gap-2">
-              <button class="btn btn-sm btn-outline-secondary" onclick="copyDailyInfo('tomorrow')" title="コピー">
-                <i class="bi bi-clipboard"></i>
-              </button>
+        <div class="card h-100">
+          <div class="card-header header-info">
+            <div class="header-title-wrapper">
+              <i class="bi bi-calendar-plus"></i>
+              <span>明日の行事</span>
+              <span id="headerTomorrowInfo" class="header-meta"></span>
             </div>
           </div>
-          <div class="card-body p-0">
-            <!-- Date Display -->
-            <div class="display-date-section" style="background: var(--color-accent-light);">
-              <h4 id="displayDateTomorrow" class="mb-0"></h4>
-              <span class="badge bg-light text-dark" id="dailyCountTomorrow" style="font-size: 0.875rem;">0件</span>
-            </div>
-            <!-- Events List -->
-            <ul class="list-group list-group-flush" id="dailyListTomorrow">
-              <li class="list-group-item text-muted text-center py-5">
-                <i class="bi bi-calendar3 fs-1 d-block mb-2 opacity-25"></i>
-                予定はありません
-              </li>
-            </ul>
+          <div class="card-body p-0 card-body-scroll">
+            <ul class="list-group list-group-flush" id="dailyListTomorrow"></ul>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Meeting Section -->
-    <div class="row g-3 mb-3">
-      <!-- Today's Meetings -->
-      <div class="col-12">
-        <div class="card h-100" style="border-left: 4px solid var(--color-primary) !important;">
-          <div class="card-header">
-            <div class="d-flex align-items-center gap-2">
-              <i class="bi bi-people-fill fs-5" style="color: var(--color-primary);"></i>
-              <h6 class="mb-0">本日の会議</h6>
-              <span id="badgeMeetingMain" class="badge ms-auto" style="background: var(--color-primary); color: white;">0</span>
+    <div class="row g-4 mb-4">
+      <div class="col-lg-6">
+        <div class="card h-100">
+          <div class="card-header header-secondary">
+            <div class="header-title-wrapper">
+              <i class="bi bi-people-fill"></i>
+              <span>本日の会議</span>
+              <span id="headerMeetingInfo" class="header-meta"></span>
             </div>
+            <button class="btn btn-sm btn-light text-secondary" onclick="openModal('meeting')"><i class="bi bi-plus-lg"></i></button>
           </div>
-          <div class="card-body p-0">
+          <div class="card-body p-0 card-body-scroll">
             <div class="table-responsive">
-              <table class="table table-sm table-hover mb-0">
-                <thead style="background: var(--color-gray-50);">
-                  <tr>
-                    <th style="font-size: 0.8125rem;">会議名</th>
-                    <th style="font-size: 0.8125rem;">時間</th>
-                    <th style="font-size: 0.8125rem;">場所</th>
-                  </tr>
-                </thead>
-                <tbody id="meetingListMain">
-                  <tr>
-                    <td colspan="3" class="text-center text-muted py-3">
-                      <i class="bi bi-people opacity-25 fs-4 d-block mb-1"></i>
-                      <small>予定なし</small>
-                    </td>
-                  </tr>
-                </tbody>
+              <table class="table table-hover mb-0">
+                <tbody id="meetingListMain"></tbody>
               </table>
             </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Announcements Section -->
-    <div class="row g-3 mb-3">
-      <!-- Staff Announcements -->
       <div class="col-lg-6">
-        <div class="card border-danger h-100">
-          <div class="card-header">
-            <div class="d-flex align-items-center gap-2">
-              <i class="bi bi-megaphone-fill text-danger"></i>
-              <h6 class="mb-0">伝達事項（職員）</h6>
+        <div class="card h-100 border-warning" style="border-left: 5px solid #f59e0b;">
+          <div class="card-header" style="background: #fffbeb; color: #b45309;">
+            <div class="header-title-wrapper">
+              <i class="bi bi-check-circle-fill"></i>
+              <span>タスク</span>
+              <span id="headerTaskInfo" class="header-meta">0件</span>
             </div>
-            <button class="btn btn-sm btn-danger" onclick="openModal('announce', '職員')">
-              <i class="bi bi-plus-lg"></i>
-            </button>
+            <button class="btn btn-sm btn-light text-warning" onclick="openModal('task')"><i class="bi bi-plus-lg"></i></button>
           </div>
-          <ul class="list-group list-group-flush" id="announceStaffList">
-            <li class="list-group-item text-muted text-center py-4">
-              <i class="bi bi-chat-left-text opacity-25 fs-3 d-block mb-2"></i>
-              伝達事項なし
-            </li>
-          </ul>
+          <div class="card-body p-0 card-body-scroll">
+            <ul class="list-group list-group-flush" id="taskList">
+              <li class="list-group-item text-center text-muted py-4">タスクなし</li>
+            </ul>
+          </div>
         </div>
       </div>
+    </div>
 
-      <!-- Student Announcements -->
+    <div class="row g-4 mb-4">
       <div class="col-lg-6">
-        <div class="card border-info h-100">
-          <div class="card-header">
-            <div class="d-flex align-items-center gap-2">
-              <i class="bi bi-broadcast text-info"></i>
-              <h6 class="mb-0">伝達事項（生徒）</h6>
+        <div class="card h-100">
+          <div class="card-header header-danger">
+            <div class="header-title-wrapper">
+              <i class="bi bi-megaphone-fill"></i>
+              <span>伝達事項（職員）</span>
             </div>
-            <button class="btn btn-sm" style="background: var(--color-info); color: white;" onclick="openModal('announce', '生徒')">
-              <i class="bi bi-plus-lg"></i>
-            </button>
+            <button class="btn btn-sm btn-light text-danger" onclick="openModal('announce', '職員')"><i class="bi bi-plus-lg"></i></button>
           </div>
-          <ul class="list-group list-group-flush" id="announceStudentList">
-            <li class="list-group-item text-muted text-center py-4">
-              <i class="bi bi-chat-left-text opacity-25 fs-3 d-block mb-2"></i>
-              伝達事項なし
-            </li>
-          </ul>
+          <div class="card-body p-0 card-body-scroll">
+            <ul class="list-group list-group-flush" id="announceStaffList"></ul>
+          </div>
         </div>
       </div>
-    </div>
-
-    <!-- Status Cards Section -->
-    <div class="row g-3 mb-3">
-      <!-- Trips -->
-      <div class="col-lg-4">
+      <div class="col-lg-6">
         <div class="card h-100">
-          <div class="card-header">
-            <div class="d-flex align-items-center gap-2">
-              <i class="bi bi-briefcase-fill text-success"></i>
-              <h6 class="mb-0">出張</h6>
-              <span id="badgeTrip" class="badge bg-success ms-auto">0</span>
+          <div class="card-header header-info">
+            <div class="header-title-wrapper">
+              <i class="bi bi-broadcast"></i>
+              <span>伝達事項（生徒）</span>
             </div>
-            <button class="btn btn-sm btn-success" onclick="openModal('trip')">
-              <i class="bi bi-plus-lg"></i>
-            </button>
+            <button class="btn btn-sm btn-light text-info" onclick="openModal('announce', '生徒')"><i class="bi bi-plus-lg"></i></button>
           </div>
-          <ul class="list-group list-group-flush" id="tripList">
-            <li class="list-group-item text-muted text-center py-3">
-              <small>予定なし</small>
-            </li>
-          </ul>
-        </div>
-      </div>
-
-      <!-- Leaves -->
-      <div class="col-lg-4">
-        <div class="card h-100">
-          <div class="card-header">
-            <div class="d-flex align-items-center gap-2">
-              <i class="bi bi-house-door-fill" style="color: var(--color-gray-500);"></i>
-              <h6 class="mb-0">休暇</h6>
-              <span id="badgeLeave" class="badge bg-secondary ms-auto">0</span>
-            </div>
-            <button class="btn btn-sm btn-secondary" onclick="openModal('leave')">
-              <i class="bi bi-plus-lg"></i>
-            </button>
-          </div>
-          <ul class="list-group list-group-flush" id="leaveList">
-            <li class="list-group-item text-muted text-center py-3">
-              <small>予定なし</small>
-            </li>
-          </ul>
-        </div>
-      </div>
-
-      <!-- Meetings -->
-      <div class="col-lg-4">
-        <div class="card h-100">
-          <div class="card-header">
-            <div class="d-flex align-items-center gap-2">
-              <i class="bi bi-people-fill" style="color: var(--color-primary);"></i>
-              <h6 class="mb-0">会議</h6>
-              <span id="badgeMeeting" class="badge" style="background: var(--color-primary); color: white;">0</span>
-            </div>
-            <button class="btn btn-sm" style="background: var(--color-primary); color: white;" onclick="openModal('meeting')">
-              <i class="bi bi-plus-lg"></i>
-            </button>
-          </div>
-          <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0">
-              <thead style="background: var(--color-gray-50);">
-                <tr>
-                  <th style="font-size: 0.8125rem;">会議名</th>
-                  <th style="font-size: 0.8125rem;">時間</th>
-                  <th style="font-size: 0.8125rem;">場所</th>
-                </tr>
-              </thead>
-              <tbody id="meetingList">
-                <tr>
-                  <td colspan="3" class="text-center text-muted py-3">
-                    <small>予定なし</small>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <div class="card-body p-0 card-body-scroll">
+            <ul class="list-group list-group-flush" id="announceStudentList"></ul>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Room Reservation Section -->
-    <div class="card">
-      <div class="card-header">
-        <div class="d-flex align-items-center gap-2">
-          <i class="bi bi-grid-3x3 text-purple"></i>
-          <h6 class="mb-0">特別教室予約状況</h6>
+    <div class="row g-4 mb-4">
+      <div class="col-lg-6">
+        <div class="card h-100">
+          <div class="card-header header-success">
+            <div class="header-title-wrapper">
+              <i class="bi bi-briefcase-fill"></i>
+              <span>出張</span>
+              <span id="headerTripInfo" class="header-meta"></span>
+            </div>
+            <button class="btn btn-sm btn-light text-success" onclick="openModal('trip')"><i class="bi bi-plus-lg"></i></button>
+          </div>
+          <div class="card-body p-0 card-body-scroll">
+            <ul class="list-group list-group-flush" id="tripList"></ul>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="card h-100">
+          <div class="card-header header-secondary">
+            <div class="header-title-wrapper">
+              <i class="bi bi-house-door-fill"></i>
+              <span>休暇</span>
+              <span id="headerLeaveInfo" class="header-meta"></span>
+            </div>
+            <button class="btn btn-sm btn-light text-secondary" onclick="openModal('leave')"><i class="bi bi-plus-lg"></i></button>
+          </div>
+          <div class="card-body p-0 card-body-scroll">
+            <ul class="list-group list-group-flush" id="leaveList"></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card h-100 mb-4">
+      <div class="card-header header-purple">
+        <div class="header-title-wrapper">
+          <i class="bi bi-grid-3x3"></i>
+          <span>特別教室予約状況</span>
         </div>
       </div>
       <div class="card-body p-0">
@@ -307,30 +211,24 @@
 
   </div>
 
-  <!-- Entry Modal -->
-  <div class="modal fade" id="entryModal" tabindex="-1" aria-labelledby="modalTitle" aria-hidden="true">
+  <div class="modal fade" id="entryModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title" id="modalTitle">
-            <i class="bi bi-pencil-square me-2"></i>登録
-          </h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
+      <div class="modal-content shadow-lg">
+        <div class="modal-header bg-light">
+          <h5 class="modal-title fw-bold" id="modalTitle">登録</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
-        <div class="modal-body">
+        <div class="modal-body p-4">
           <form id="entryForm">
             <input type="hidden" id="entryCategory">
+            <input type="hidden" id="entryId">
             <input type="hidden" id="announceType">
             <div id="formContent"></div>
           </form>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-            <i class="bi bi-x-lg me-1"></i>キャンセル
-          </button>
-          <button type="button" class="btn btn-primary" onclick="submitForm()">
-            <i class="bi bi-check-lg me-1"></i>保存
-          </button>
+        <div class="modal-footer bg-light border-0">
+          <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">キャンセル</button>
+          <button type="button" class="btn btn-primary rounded-pill px-4" onclick="submitForm()">保存</button>
         </div>
       </div>
     </div>
