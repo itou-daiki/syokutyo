@@ -129,7 +129,6 @@ function getDataForDate(dateStr) {
 
     if (!start) return false;
     const isMatch = normalize(start) <= targetTime && targetTime <= normalize(end);
-    if (isMatch && r[7]) scheduleType = r[7]; // Found a type for this day
     return isMatch;
   }).map(r => ({
     id: r[0],
@@ -142,12 +141,39 @@ function getDataForDate(dateStr) {
     // schedule_type not needed in list item, but we returned it globally
   })).sort((a, b) => (a.order - b.order) || (a.time || '').localeCompare(b.time || ''));
 
-  result.scheduleType = scheduleType;
+  // Main Event & Schedule Info (EVENT Sheet)
+  // A:ID, B:Date, C:Content, D:ScheduleType, E:CleaningStatus
+  let mainEventObj = null;
+  const events = getRows(SHEETS.EVENT);
+  // Find matching date
+  const matchedEvent = events.find(r => {
+    const d = r[1] ? new Date(formatDate(r[1]).replace(/-/g, '/')) : null;
+    return d && normalize(d) === targetTime;
+  });
 
-  // Main Event (New)
-  // ID, Date, Content
-  const events = getRows(SHEETS.EVENT).filter(r => formatDate(r[1]) === dateStr);
-  result.main_event = events.length > 0 ? { id: events[0][0], date: events[0][1], content: events[0][2] } : null;
+  if (matchedEvent) {
+    mainEventObj = {
+      id: matchedEvent[0],
+      date: formatDate(matchedEvent[1]),
+      content: matchedEvent[2] || '',
+      scheduleType: matchedEvent[3] || '通常校時',
+      cleaningStatus: matchedEvent[4] || '通常清掃'
+    };
+  } else {
+    // Default
+    mainEventObj = {
+      id: null,
+      date: dateStr,
+      content: '',
+      scheduleType: '通常校時',
+      cleaningStatus: '通常清掃'
+    };
+  }
+  result.main_event = mainEventObj;
+  // Legacy support removed: result.scheduleType will be undefined or we can polyfill if needed, 
+  // but frontend should check result.main_event.scheduleType.
+  // For backward compatibility briefly:
+  result.scheduleType = mainEventObj.scheduleType;
 
   // 出張: date == target
   result.trips = getRows(SHEETS.TRIP).filter(r => formatDate(r[1]) === dateStr)
@@ -469,58 +495,48 @@ function moveItem(category, id, direction, dateStr) {
   sheet.getRange(swapRowIdx + 1, orderColIdx + 1).setValue(swapOrderVal);
 }
 
-function saveScheduleInfo(dateStr, scheduleType, mainEventContent) {
-  // 1. Update Schedule Type in DAILY
-  // All rows matching dateStr should have the same scheduleType.
-  // If no rows, create a dummy one?
-  const dailySheet = getSS().getSheetByName(SHEETS.DAILY);
-  const dailies = dailySheet.getDataRange().getValues();
-  let foundDaily = false;
+function saveScheduleInfo(dateStr, scheduleType, mainEventContent, cleaningStatus) {
+  const sheet = getSS().getSheetByName(SHEETS.EVENT);
+  // dateStr is expected to be yyyy-MM-dd
+  // sheet date is likely yyyy/MM/dd or Date object
 
-  // Update existing rows
-  for (let i = 1; i < dailies.length; i++) {
-    // Check if date matches (or is within range? Type is usually per day...)
-    // If an event spans multiple days, assigning a type to it might imply it's that type for ALL days.
-    // But for simplicity, we only match exact start date? Or check overlap?
-    // Let's stick to: Update rows where Start Date == dateStr.
-    if (formatDate(dailies[i][1]) === dateStr) {
-      dailySheet.getRange(i + 1, 8).setValue(scheduleType); // Col H (8)
-      foundDaily = true;
+  const rows = sheet.getDataRange().getValues();
+  let found = false;
+
+  // Normalize comparisons
+  const targetDate = new Date(dateStr.replace(/-/g, '/'));
+
+  for (let i = 1; i < rows.length; i++) {
+    const rDate = rows[i][1];
+    if (!rDate) continue;
+    const d = new Date(rDate);
+
+    // Compare year/month/day
+    if (d.getFullYear() === targetDate.getFullYear() &&
+      d.getMonth() === targetDate.getMonth() &&
+      d.getDate() === targetDate.getDate()) {
+
+      // Update
+      // C:Content, D:Type, E:Cleaning
+      sheet.getRange(i + 1, 3).setValue(mainEventContent || '');
+      sheet.getRange(i + 1, 4).setValue(scheduleType || '通常校時');
+      sheet.getRange(i + 1, 5).setValue(cleaningStatus || '通常清掃');
+      found = true;
+      break;
     }
   }
 
-  // If no events exist for this day, create a placeholder event so we can save the type?
-  if (!foundDaily && scheduleType) {
-    // Create hidden/dummy event
-    const newId = Utilities.getUuid();
-    // A:id, B:date, C:time, D:content, E:note, F:end_date, G:order, H:type
-    dailySheet.appendRow([newId, dateStr, '', '(校時設定)', '', dateStr, 999, scheduleType]);
+  if (!found) {
+    sheet.appendRow([
+      Utilities.getUuid(),
+      dateStr,
+      mainEventContent || '',
+      scheduleType || '通常校時',
+      cleaningStatus || '通常清掃'
+    ]);
   }
-
-  // 2. Update Main Event in EVENT
-  const eventSheet = getSS().getSheetByName(SHEETS.EVENT);
-  const events = eventSheet.getDataRange().getValues();
-  let foundEvent = false;
-
-  for (let i = 1; i < events.length; i++) {
-    if (formatDate(events[i][1]) === dateStr) {
-      if (mainEventContent) {
-        eventSheet.getRange(i + 1, 3).setValue(mainEventContent); // Update
-      } else {
-        eventSheet.deleteRow(i + 1); // Delete if empty
-      }
-      foundEvent = true;
-      break; // Only one main event per day
-    }
-  }
-
-  if (!foundEvent && mainEventContent) {
-    const newId = Utilities.getUuid();
-    eventSheet.appendRow([newId, dateStr, mainEventContent]);
-  }
-
-  return { success: true };
 }
+
 // =============================================================================
 // ヘルパー関数 & 天気API (変更なし)
 // =============================================================================

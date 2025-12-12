@@ -21,6 +21,15 @@
  * C: time (時間)
  * D: content (内容)
  * E: note (備考)
+ * F: end_date (終了日)
+ * G: display_order (表示順)
+ * 
+ * ■ イベント (SHEETS.EVENT)
+ * A: id
+ * B: date (日付)
+ * C: content (メインイベント・行事名)
+ * D: schedule_type (校時：通常校時, 短縮校時 etc)
+ * E: cleaning_status (清掃：通常清掃, 清掃カット etc)
  * 
  * ■ 出張等 (SHEETS.TRIP)
  * A: id
@@ -54,6 +63,7 @@
  * E: target (対象)
  * F: content (内容)
  * G: reporter (連絡者)
+ * H: display_order (表示順)
  * 
  * ■ 定例会議 (SHEETS.FIXED_MEETING)
  * A: day_of_week (曜日)

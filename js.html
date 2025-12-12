@@ -111,38 +111,28 @@
     if (!el) return;
 
     const day = CONFIG.DAYS_OF_WEEK[d.getDay()];
-    let html = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} (${day})　${c}件`;
+    let html = `<div>${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} (${day})　${c}件</div>`;
 
-    if (dayData) {
-      // Schedule Type & Main Event (Only for Today generally, or pass dayData for tomorrow too)
-      // Check `dayData.scheduleType` and `dayData.main_event`
-      if (dayData.scheduleType) {
-        html += ` <span class="badge bg-secondary ms-2" style="cursor:pointer" onclick="openScheduleSettings()">${escapeHtml(dayData.scheduleType)}</span>`;
-      } else if (id === 'headerTodayInfo') {
-        html += ` <button class="btn btn-xs btn-outline-secondary ms-2 rounded-pill" onclick="openScheduleSettings()">校時未設定</button>`;
-      }
+    if (dayData && dayData.main_event) {
+      const evt = dayData.main_event;
+      // Single line: Event Schedule Cleaning
+      // Styles: Event(Primary), Schedule(Secondary), Cleaning(Info/Dark? or Warning if cut?)
 
-      if (dayData.main_event) {
-        html += ` <span class="badge bg-primary ms-1" style="cursor:pointer" onclick="openScheduleSettings()">${escapeHtml(dayData.main_event.content)}</span>`;
-      }
+      let line = '';
+      if (evt.content) line += `<span class="badge bg-primary me-1">${escapeHtml(evt.content)}</span>`;
+
+      // Schedule:
+      const schClass = evt.scheduleType === '通常校時' ? 'badge bg-outline-secondary text-dark border me-1' : 'badge bg-secondary me-1';
+      line += `<span class="${schClass}">${escapeHtml(evt.scheduleType)}</span>`;
+
+      // Cleaning:
+      const clnClass = evt.cleaningStatus === '通常清掃' ? 'badge bg-outline-info text-dark border me-1' : 'badge bg-info text-dark me-1';
+      line += `<span class="${clnClass}">${escapeHtml(evt.cleaningStatus)}</span>`;
+
+      html += `<div class="mt-1" style="cursor:pointer;" onclick='openScheduleSettings("${escapeHtml(evt.scheduleType)}", "${escapeHtml(evt.cleaningStatus)}", "${escapeHtml(evt.content)}")'>${line}</div>`;
     }
 
     el.innerHTML = html;
-  }
-
-  // =============================================================================
-  // 日付操作
-  // =============================================================================
-  function setToday() {
-    currentDate = new Date();
-    updateDatePicker();
-    loadData();
-  }
-
-  function changeDate(d) {
-    currentDate.setDate(currentDate.getDate() + d);
-    updateDatePicker();
-    loadData();
   }
 
   function updateDatePicker() {
@@ -558,8 +548,58 @@
     if (modal) modal.show();
   }
 
-  function openScheduleSettings() {
-    openModal('schedule_settings');
+  function openScheduleSettings(curType, curClean, curMain) {
+    // Determine defaults if args missing (e.g. from button click)
+    // Actually args passed from updateHeader only. If manual call?
+    // Let's rely on data loaded in memory if possible? 
+    // Simplified: Just clear and let user type, or passing args is better.
+    // If we call from header, we pass args.
+
+    document.getElementById('entryCategory').value = 'schedule_settings';
+    document.getElementById('entryId').value = ''; // No ID needed really, date based
+    document.getElementById('modalTitle').innerText = '本日の予定設定';
+
+    const typeOpts = CONFIG.SCHEDULE_TYPES.map(t => `<option value="${t}">${t}</option>`).join('');
+
+    // We don't have Select for Cleaning yet in CONFIG, user said "Standard or Cut" mainly.
+    // Let's provide an input with datalist or just input.
+    // If nothing entered -> "通常清掃"
+
+    let html = `<div class="mb-3">
+                  <label class="form-label">校時</label>
+                  <select id="inputScheduleType" class="form-control">
+                    <option value="">(指定なし)</option>
+                    ${typeOpts}
+                  </select>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">清掃</label>
+                  <input type="text" id="inputCleaning" class="form-control" placeholder="例: 清掃カット" list="cleaningList">
+                  <datalist id="cleaningList">
+                    <option value="通常清掃">
+                    <option value="清掃カット">
+                    <option value="大掃除">
+                  </datalist>
+                </div>
+                <div class="mb-3">
+                   <label class="form-label">メインイベント</label>
+                   <input type="text" id="inputMainEvent" class="form-control" placeholder="例: 体育祭">
+                </div>`;
+
+    document.getElementById('formContent').innerHTML = html;
+
+    if (modal) modal.show();
+
+    // Set values after render
+    setTimeout(() => {
+      if (curType) document.getElementById('inputScheduleType').value = curType;
+      else document.getElementById('inputScheduleType').value = '通常校時';
+
+      if (curClean) document.getElementById('inputCleaning').value = curClean;
+      else document.getElementById('inputCleaning').value = '通常清掃';
+
+      if (curMain) document.getElementById('inputMainEvent').value = curMain;
+    }, 0);
   }
 
   function toggleTimeInput() {
@@ -622,11 +662,12 @@
     } else if (cat === 'schedule_settings') {
       const type = document.getElementById('inputScheduleType').value;
       const main = document.getElementById('inputMainEvent').value;
+      const clean = document.getElementById('inputCleaning').value;
       const date = document.getElementById('datePicker').value;
 
       if (modal) modal.hide();
       showLoading(true);
-      google.script.run.withSuccessHandler(() => loadData()).withFailureHandler(onFailure).saveScheduleInfo(date, type, main);
+      google.script.run.withSuccessHandler(() => loadData()).withFailureHandler(onFailure).saveScheduleInfo(date, type, main, clean);
       return; // Special path
     } else if (cat === 'trip' || cat === 'leave') {
       data.staff = document.getElementById('inputStaff').value; data.time = document.getElementById('inputTime').value;
