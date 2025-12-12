@@ -8,7 +8,7 @@
   let currentData = {};
   let staffList = [];
   let modal = null;
-  let currentUser = localStorage.getItem('syokutyo_user') || '';
+  let currentUser = ''; // 元: localStorage.getItem('syokutyo_user')
 
   const CONFIG = {
     ROOMS: ['選択1', '選択2', '選択3', '選択4', 'PC室', '会議室', '視聴覚室'],
@@ -33,23 +33,7 @@
     }
   };
 
-  // =============================================================================
-  // ユーザー管理
-  // =============================================================================
-  function updateStaffSelect() {
-    const select = document.getElementById('currentUserSelect');
-    if (!select) return;
-    select.innerHTML = '<option value="">(全員表示)</option>' +
-      staffList.map(s => `<option value="${s.name}" ${s.name === currentUser ? 'selected' : ''}>${s.name}</option>`).join('');
 
-    if (currentData.tasks) renderTaskList(currentData.tasks);
-  }
-
-  function changeCurrentUser() {
-    currentUser = document.getElementById('currentUserSelect').value;
-    localStorage.setItem('syokutyo_user', currentUser);
-    if (currentData.tasks) renderTaskList(currentData.tasks);
-  }
 
   // =============================================================================
   // データ操作
@@ -86,7 +70,7 @@
       }
       */
 
-      updateStaffSelect();
+
 
       updateHeader(currentDate, data.today.daily.length, 'headerTodayInfo');
       const tmr = new Date(currentDate); tmr.setDate(tmr.getDate() + 1);
@@ -181,14 +165,20 @@
     items.forEach(d => {
       const editBtn = `<button class="btn btn-sm text-primary" onclick='openEditModal("daily", ${JSON.stringify(d)})'><i class="bi bi-pencil-square"></i></button>`;
       const delBtn = `<button class="btn btn-sm text-danger" onclick="deleteItem('${d.id}','daily','${escapeHtml(d.content)}')"><i class="bi bi-trash"></i></button>`;
+      const upBtn = `<button class="btn btn-sm text-secondary p-0 me-1" onclick="moveItem('daily', '${d.id}', -1)"><i class="bi bi-arrow-up-short"></i></button>`;
+      const downBtn = `<button class="btn btn-sm text-secondary p-0 me-2" onclick="moveItem('daily', '${d.id}', 1)"><i class="bi bi-arrow-down-short"></i></button>`;
+
       list.innerHTML += `
       <li class="list-group-item">
-        <div>
-          <span class="fw-bold text-primary me-2">${escapeHtml(d.time)}</span>
-          <span class="fw-bold">${escapeHtml(d.content)}</span>
-          <small class="text-muted ms-2">${escapeHtml(d.note)}</small>
+        <div class="d-flex align-items-center">
+            <div class="d-flex flex-column me-2">${upBtn}${downBtn}</div>
+            <div class="flex-grow-1" style="cursor:pointer;" onclick='showDailyDetail(${JSON.stringify(d)})'>
+                <span class="fw-bold text-primary me-2">${escapeHtml(d.time)}</span>
+                <span class="fw-bold">${escapeHtml(d.content)}</span>
+                <small class="text-muted ms-2">${escapeHtml(d.note)}</small>
+            </div>
+            <div class="btn-action-group ms-2">${editBtn}${delBtn}</div>
         </div>
-        <div class="btn-action-group">${editBtn}${delBtn}</div>
       </li>`;
     });
   }
@@ -227,7 +217,9 @@
       const prio = a.priority === '◎' ? '<span class="text-danger fw-bold">【重要】</span> ' : '';
       const btns = `<button class="btn btn-sm text-primary p-0 me-2" onclick='openEditModal("announce", ${JSON.stringify(a)})'><i class="bi bi-pencil-square"></i></button>
                   <button class="btn btn-sm text-danger p-0" onclick="deleteItem('${a.id}','announce','伝達事項')"><i class="bi bi-trash"></i></button>`;
-      list.innerHTML += `<li class="list-group-item"><div class="w-100"><div class="d-flex justify-content-between mb-1"><span class="badge bg-light text-dark border">${escapeHtml(a.target)}</span><small class="text-muted">${escapeHtml(a.reporter)}</small></div><div class="mb-2">${prio}${escapeHtml(a.content)}</div><div class="text-end btn-action-group">${btns}</div></div></li>`;
+      const upBtn = `<button class="btn btn-sm text-secondary p-0 me-1" onclick="moveItem('announce', '${a.id}', -1)"><i class="bi bi-arrow-up-short"></i></button>`;
+      const downBtn = `<button class="btn btn-sm text-secondary p-0 me-2" onclick="moveItem('announce', '${a.id}', 1)"><i class="bi bi-arrow-down-short"></i></button>`;
+      list.innerHTML += `<li class="list-group-item"><div class="w-100"><div class="d-flex justify-content-between mb-1"><span class="badge bg-light text-dark border">${escapeHtml(a.target)}</span><small class="text-muted">${escapeHtml(a.reporter)}</small></div><div class="d-flex align-items-start"> <div class="d-flex flex-column me-2">${upBtn}${downBtn}</div> <div class="flex-grow-1">${prio}${escapeHtml(a.content)}</div></div><div class="text-end btn-action-group">${btns}</div></div></li>`;
     });
   }
 
@@ -275,6 +267,24 @@
   function cycleTaskStatus(id, currentStatus) {
     const nextStatus = (currentStatus + 1) % 3;
     toggleTask(id, nextStatus);
+  }
+
+  function showDailyDetail(d) {
+    const modal = new bootstrap.Modal(document.getElementById('infoModal'));
+    document.getElementById('infoModalTitle').textContent = '行事詳細';
+    document.getElementById('infoModalBody').innerHTML = `
+        <div class="mb-2"><strong>日付:</strong> ${escapeHtml(d.date)} ${d.end_date && d.end_date !== d.date ? ' 〜 ' + escapeHtml(d.end_date) : ''}</div>
+        <div class="mb-2"><strong>時間:</strong> ${escapeHtml(d.time)}</div>
+        <div class="mb-2"><strong>内容:</strong> ${escapeHtml(d.content)}</div>
+        <div class="mb-2"><strong>備考:</strong> ${escapeHtml(d.note)}</div>
+     `;
+    modal.show();
+  }
+
+  function moveItem(cat, id, dir) {
+    const date = document.getElementById('datePicker').value;
+    showLoading(true);
+    google.script.run.withSuccessHandler(() => loadData()).withFailureHandler(onFailure).moveItem(cat, id, dir, date);
   }
 
   function renderRoomMatrix(reservations) {
@@ -364,7 +374,18 @@
         setTimeout(updateTaskUserList, 100);
       }
     } else if (cat === 'daily') {
-      html = `<div class="mb-3"><label>時間</label><input type="text" id="inputTime" class="form-control" value="${val('time')}"></div><div class="mb-3"><label>内容</label><input type="text" id="inputContent" class="form-control" value="${val('content')}"></div><div class="mb-3"><label>備考</label><input type="text" id="inputNote" class="form-control" value="${val('note')}"></div>`;
+      // Start/End date support
+      const pickerVal = document.getElementById('datePicker').value;
+      const sDate = (data && data.date) ? data.date.replace(/\//g, '-') : pickerVal;
+      const eDate = (data && data.end_date) ? data.end_date.replace(/\//g, '-') : sDate; // Default end to start or picker
+
+      html = `<div class="row mb-3">
+                <div class="col"><label>開始日</label><input type="date" id="inputStartDate" class="form-control" value="${sDate}"></div>
+                <div class="col"><label>終了日</label><input type="date" id="inputEndDate" class="form-control" value="${eDate}"></div>
+              </div>
+              <div class="mb-3"><label>時間</label><input type="text" id="inputTime" class="form-control" value="${val('time')}"></div>
+              <div class="mb-3"><label>内容</label><input type="text" id="inputContent" class="form-control" value="${val('content')}"></div>
+              <div class="mb-3"><label>備考</label><input type="text" id="inputNote" class="form-control" value="${val('note')}"></div>`;
     } else if (cat === 'meeting') {
       html = `<div class="mb-3"><label>会議名</label><input type="text" id="inputName" class="form-control" value="${val('name')}"></div><div class="mb-3"><label>時間</label><input type="text" id="inputTime" class="form-control" value="${val('time') || '放課後'}"></div><div class="mb-3"><label>場所</label><input type="text" id="inputPlace" class="form-control" value="${val('place') || '会議室'}"></div>`;
     } else if (cat === 'trip' || cat === 'leave') {
@@ -420,8 +441,11 @@
       }
 
       if (!data.content) return alert('内容を入力してください');
+
     } else if (cat === 'daily') {
       data.time = document.getElementById('inputTime').value; data.content = document.getElementById('inputContent').value; data.note = document.getElementById('inputNote').value;
+      data.date = document.getElementById('inputStartDate').value; // Override Start
+      data.end_date = document.getElementById('inputEndDate').value; // New End
     } else if (cat === 'meeting') {
       data.name = document.getElementById('inputName').value; data.time = document.getElementById('inputTime').value; data.place = document.getElementById('inputPlace').value;
     } else if (cat === 'trip' || cat === 'leave') {
