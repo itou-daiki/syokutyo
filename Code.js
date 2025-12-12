@@ -19,7 +19,8 @@ const SHEETS = {
   ROOM: '特別教室予約',
   FIXED_MEETING: '定例会議',
   FIXED_CLASS: '特別教室固定',
-  TASK: 'タスク' // 新規追加
+  TASK: 'タスク',
+  EVENT: 'イベント' // New
 };
 
 const ERROR_MESSAGES = {
@@ -120,13 +121,16 @@ function getDataForDate(dateStr) {
   const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'][targetDate.getDay()];
 
   // 行事: Start <= Target <= End
-  // A:id, B:date, C:time, D:content, E:note, F:end_date, G:display_order
+  // A:id, B:date, C:time, D:content, E:note, F:end_date, G:display_order, H:schedule_type
+  let scheduleType = '';
   result.daily = getRows(SHEETS.DAILY).filter(r => {
     const start = r[1] ? new Date(formatDate(r[1]).replace(/-/g, '/')) : null;
     const end = r[5] ? new Date(formatDate(r[5]).replace(/-/g, '/')) : (start ? new Date(start) : null); // Default end to start
 
     if (!start) return false;
-    return normalize(start) <= targetTime && targetTime <= normalize(end);
+    const isMatch = normalize(start) <= targetTime && targetTime <= normalize(end);
+    if (isMatch && r[7]) scheduleType = r[7]; // Found a type for this day
+    return isMatch;
   }).map(r => ({
     id: r[0],
     date: formatDate(r[1]),
@@ -135,7 +139,15 @@ function getDataForDate(dateStr) {
     note: r[4] || '',
     end_date: formatDate(r[5]),
     order: r[6] ? parseInt(r[6]) : 999
+    // schedule_type not needed in list item, but we returned it globally
   })).sort((a, b) => (a.order - b.order) || (a.time || '').localeCompare(b.time || ''));
+
+  result.scheduleType = scheduleType;
+
+  // Main Event (New)
+  // ID, Date, Content
+  const events = getRows(SHEETS.EVENT).filter(r => formatDate(r[1]) === dateStr);
+  result.main_event = events.length > 0 ? { id: events[0][0], date: events[0][1], content: events[0][2] } : null;
 
   // 出張: date == target
   result.trips = getRows(SHEETS.TRIP).filter(r => formatDate(r[1]) === dateStr)
@@ -212,9 +224,14 @@ function saveData(category, data) {
     switch (category) {
       case 'daily':
         sheetName = SHEETS.DAILY;
-        // id, date, time, content, note, end_date, display_order
-        // New item gets max order + 1 (simple logic) or 999. Better to query max order for the date? 
-        // For simplicity, new items get 999 (bottom). Reordering handles specific values.
+        // id, date, time, content, note, end_date, display_order, schedule_type
+        // We preserve schedule_type from existing rows if possible, BUT here we are adding/updating a specific ITEM.
+        // It shouldn't overwrite schedule_type column if it's not being set here.
+        // However, rowData structure writes a whole row.
+        // Strategy: Only update A-G (indices 0-6), leave H (7) alone if we can.
+        // OR: backend logic for update handles this?
+        // Current logic in `saveData`: rowData = [date, time, content, note, end_date, 999] (len 6)
+        // If we write this, it writes to Col B~G. Col H (schedule_type) is untouched. Correct!
         rowData = [data.date, data.time || '', data.content, data.note || '', data.end_date || data.date, 999];
         break;
       case 'trip':
@@ -450,6 +467,59 @@ function moveItem(category, id, direction, dateStr) {
 
   sheet.getRange(targetRowIdx + 1, orderColIdx + 1).setValue(targetOrderVal);
   sheet.getRange(swapRowIdx + 1, orderColIdx + 1).setValue(swapOrderVal);
+}
+
+function saveScheduleInfo(dateStr, scheduleType, mainEventContent) {
+  // 1. Update Schedule Type in DAILY
+  // All rows matching dateStr should have the same scheduleType.
+  // If no rows, create a dummy one?
+  const dailySheet = getSS().getSheetByName(SHEETS.DAILY);
+  const dailies = dailySheet.getDataRange().getValues();
+  let foundDaily = false;
+
+  // Update existing rows
+  for (let i = 1; i < dailies.length; i++) {
+    // Check if date matches (or is within range? Type is usually per day...)
+    // If an event spans multiple days, assigning a type to it might imply it's that type for ALL days.
+    // But for simplicity, we only match exact start date? Or check overlap?
+    // Let's stick to: Update rows where Start Date == dateStr.
+    if (formatDate(dailies[i][1]) === dateStr) {
+      dailySheet.getRange(i + 1, 8).setValue(scheduleType); // Col H (8)
+      foundDaily = true;
+    }
+  }
+
+  // If no events exist for this day, create a placeholder event so we can save the type?
+  if (!foundDaily && scheduleType) {
+    // Create hidden/dummy event
+    const newId = Utilities.getUuid();
+    // A:id, B:date, C:time, D:content, E:note, F:end_date, G:order, H:type
+    dailySheet.appendRow([newId, dateStr, '', '(校時設定)', '', dateStr, 999, scheduleType]);
+  }
+
+  // 2. Update Main Event in EVENT
+  const eventSheet = getSS().getSheetByName(SHEETS.EVENT);
+  const events = eventSheet.getDataRange().getValues();
+  let foundEvent = false;
+
+  for (let i = 1; i < events.length; i++) {
+    if (formatDate(events[i][1]) === dateStr) {
+      if (mainEventContent) {
+        eventSheet.getRange(i + 1, 3).setValue(mainEventContent); // Update
+      } else {
+        eventSheet.deleteRow(i + 1); // Delete if empty
+      }
+      foundEvent = true;
+      break; // Only one main event per day
+    }
+  }
+
+  if (!foundEvent && mainEventContent) {
+    const newId = Utilities.getUuid();
+    eventSheet.appendRow([newId, dateStr, mainEventContent]);
+  }
+
+  return { success: true };
 }
 // =============================================================================
 // ヘルパー関数 & 天気API (変更なし)
