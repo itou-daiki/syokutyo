@@ -13,7 +13,8 @@
   const CONFIG = {
     ROOMS: ['選択1', '選択2', '選択3', '選択4', 'PC室', '会議室', '視聴覚室'],
     PERIODS: ['1限', '2限', '3限', '4限', '昼', '5限', '6限', '放課後'],
-    DAYS_OF_WEEK: ['日', '月', '火', '水', '木', '金', '土']
+    DAYS_OF_WEEK: ['日', '月', '火', '水', '木', '金', '土'],
+    SCHEDULE_TYPES: ['通常校時', '短縮校時', '変則校時', '考査校時', '特別校時']
   };
 
   // 初期化：エラーがあっても日付セットだけは進める
@@ -72,9 +73,13 @@
 
 
 
-      updateHeader(currentDate, data.today.daily.length, 'headerTodayInfo');
+      updateHeader(currentDate, data.today.daily.length, 'headerTodayInfo', data);
       const tmr = new Date(currentDate); tmr.setDate(tmr.getDate() + 1);
-      updateHeader(tmr, data.tomorrow.daily.length, 'headerTomorrowInfo');
+      updateHeader(tmr, data.tomorrow.daily.length, 'headerTomorrowInfo', null); // Tomorrow functionality limitation: data.tomorrow doesn't have scheduleType attached by backend usually unless we strictly pass it. 
+      // Current backend `getData` returns `today` and `tomorrow` objects.
+      // We updated `getDataForDate` to fallback `scheduleType` etc.
+      // So data.tomorrow MUST have it if we used the same function.
+      // Yes, `getData` calls `getDataForDate`. So `data.tomorrow` has `.scheduleType` and `.main_event`.
 
       renderDailyList(data.today.daily, 'dailyList');
       renderDailyList(data.tomorrow.daily, 'dailyListTomorrow');
@@ -99,12 +104,28 @@
     }
   }
 
-  function updateHeader(d, c, id) {
+  function updateHeader(d, c, id, dayData) {
     const el = document.getElementById(id);
-    if (el) {
-      const day = CONFIG.DAYS_OF_WEEK[d.getDay()];
-      el.textContent = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} (${day})　${c}件`;
+    if (!el) return;
+
+    const day = CONFIG.DAYS_OF_WEEK[d.getDay()];
+    let html = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} (${day})　${c}件`;
+
+    if (dayData) {
+      // Schedule Type & Main Event (Only for Today generally, or pass dayData for tomorrow too)
+      // Check `dayData.scheduleType` and `dayData.main_event`
+      if (dayData.scheduleType) {
+        html += ` <span class="badge bg-secondary ms-2" style="cursor:pointer" onclick="openScheduleSettings()">${escapeHtml(dayData.scheduleType)}</span>`;
+      } else if (id === 'headerTodayInfo') {
+        html += ` <button class="btn btn-xs btn-outline-secondary ms-2 rounded-pill" onclick="openScheduleSettings()">校時未設定</button>`;
+      }
+
+      if (dayData.main_event) {
+        html += ` <span class="badge bg-primary ms-1" style="cursor:pointer" onclick="openScheduleSettings()">${escapeHtml(dayData.main_event.content)}</span>`;
+      }
     }
+
+    el.innerHTML = html;
   }
 
   // =============================================================================
@@ -321,8 +342,8 @@
     document.getElementById('entryCategory').value = cat;
     document.getElementById('entryId').value = data ? data.id : '';
     document.getElementById('announceType').value = typeArg || '';
-    const titleMap = { daily: '行事', meeting: '会議', trip: '出張', leave: '休暇', announce: '伝達事項', task: 'タスク', room: '教室予約' };
-    document.getElementById('modalTitle').innerText = (data ? '編集: ' : '登録: ') + titleMap[cat];
+    const titleMap = { daily: '行事', meeting: '会議', trip: '出張', leave: '休暇', announce: '伝達事項', task: 'タスク', room: '教室予約', schedule_settings: '本日の設定' };
+    document.getElementById('modalTitle').innerText = (data || cat === 'schedule_settings' ? (cat === 'schedule_settings' ? '編集: ' : '編集: ') : '登録: ') + titleMap[cat];
     const staffOpts = '<option value="">選択</option>' + staffList.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
     const val = (key) => data ? (data[key] || '') : '';
 
@@ -379,15 +400,78 @@
       const sDate = (data && data.date) ? data.date.replace(/\//g, '-') : pickerVal;
       const eDate = (data && data.end_date) ? data.end_date.replace(/\//g, '-') : sDate; // Default end to start or picker
 
-      html = `<div class="row mb-3">
-                <div class="col"><label>開始日</label><input type="date" id="inputStartDate" class="form-control" value="${sDate}"></div>
-                <div class="col"><label>終了日</label><input type="date" id="inputEndDate" class="form-control" value="${eDate}"></div>
+    } else if (cat === 'daily' || cat === 'meeting') {
+      const isDaily = cat === 'daily';
+      // Time Logic
+      // If we have data.time, detect if it matches HH:MM format (Range) or Period format.
+      const currentVal = val('time');
+      const isRange = currentVal && currentVal.includes(':') && currentVal.includes('〜');
+      // Simple heuristic: if it contains 'limit' or 'period' keywords or is short, it's Period.
+      // If contains ':', it's time.
+      const timeMode = isRange ? 'time' : 'period';
+
+      const periodOpts = CONFIG.PERIODS.map(p => `<input type="radio" class="btn-check" name="periodSel" id="p_${p}" value="${p}" ${currentVal === p ? 'checked' : ''}><label class="btn btn-outline-secondary btn-sm" for="p_${p}">${p}</label>`).join('');
+
+      // Parse output for Inputs
+      let tStart = '', tEnd = '';
+      if (isRange) {
+        const parts = currentVal.split('〜');
+        tStart = parts[0].trim();
+        tEnd = parts[1] ? parts[1].trim() : '';
+      }
+
+      let dateInputs = '';
+      if (isDaily) {
+        const pickerVal = document.getElementById('datePicker').value;
+        const sDate = (data && data.date) ? data.date.replace(/\//g, '-') : pickerVal;
+        const eDate = (data && data.end_date) ? data.end_date.replace(/\//g, '-') : sDate;
+        dateInputs = `<div class="row mb-3"><div class="col"><label>開始日</label><input type="date" id="inputStartDate" class="form-control" value="${sDate}"></div><div class="col"><label>終了日</label><input type="date" id="inputEndDate" class="form-control" value="${eDate}"></div></div>`;
+      }
+
+      const contentLabel = isDaily ? '内容' : '会議名';
+      const catField = isDaily ? '' : `<div class="mb-3"><label>場所</label><input type="text" id="inputPlace" class="form-control" value="${val('place') || '会議室'}"></div>`;
+
+      html = `${dateInputs}
+              <div class="mb-3">
+                <label>時間指定</label>
+                <div class="btn-group w-100 mb-2" role="group">
+                  <input type="radio" class="btn-check" name="timeMode" id="tm_period" value="period" ${timeMode === 'period' ? 'checked' : ''} onchange="toggleTimeInput()">
+                  <label class="btn btn-outline-primary" for="tm_period">校時</label>
+                  <input type="radio" class="btn-check" name="timeMode" id="tm_time" value="time" ${timeMode === 'time' ? 'checked' : ''} onchange="toggleTimeInput()">
+                  <label class="btn btn-outline-primary" for="tm_time">時刻</label>
+                </div>
+                
+                <div id="cg_period" style="${timeMode === 'period' ? '' : 'display:none'}">
+                  <div class="d-flex flex-wrap gap-1">${periodOpts}</div>
+                </div>
+                
+                <div id="cg_time" style="${timeMode === 'time' ? '' : 'display:none'}">
+                  <div class="input-group">
+                    <input type="time" id="inputTimeStart" class="form-control" value="${tStart}">
+                    <span class="input-group-text">〜</span>
+                    <input type="time" id="inputTimeEnd" class="form-control" value="${tEnd}">
+                  </div>
+                </div>
               </div>
-              <div class="mb-3"><label>時間</label><input type="text" id="inputTime" class="form-control" value="${val('time')}"></div>
-              <div class="mb-3"><label>内容</label><input type="text" id="inputContent" class="form-control" value="${val('content')}"></div>
-              <div class="mb-3"><label>備考</label><input type="text" id="inputNote" class="form-control" value="${val('note')}"></div>`;
-    } else if (cat === 'meeting') {
-      html = `<div class="mb-3"><label>会議名</label><input type="text" id="inputName" class="form-control" value="${val('name')}"></div><div class="mb-3"><label>時間</label><input type="text" id="inputTime" class="form-control" value="${val('time') || '放課後'}"></div><div class="mb-3"><label>場所</label><input type="text" id="inputPlace" class="form-control" value="${val('place') || '会議室'}"></div>`;
+              <div class="mb-3"><label>${contentLabel}</label><input type="text" id="${isDaily ? 'inputContent' : 'inputName'}" class="form-control" value="${isDaily ? val('content') : val('name')}"></div>
+              ${isDaily ? `<div class="mb-3"><label>備考</label><input type="text" id="inputNote" class="form-control" value="${val('note')}"></div>` : ''}
+              ${catField}`;
+
+    } else if (cat === 'schedule_settings') {
+      const curType = currentData.scheduleType || '';
+      const curEvent = currentData.main_event ? currentData.main_event.content : '';
+      const typeOpts = CONFIG.SCHEDULE_TYPES.map(t => `<option value="${t}" ${t === curType ? 'selected' : ''}>${t}</option>`).join('');
+
+      html = `<div class="mb-3">
+                  <label class="form-label">本日の校時</label>
+                  <select id="inputScheduleType" class="form-select">
+                    <option value="">(指定なし)</option>${typeOpts}
+                  </select>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">メインイベント</label>
+                  <input type="text" id="inputMainEvent" class="form-control" value="${escapeHtml(curEvent)}" placeholder="例: 体育祭">
+                </div>`;
     } else if (cat === 'trip' || cat === 'leave') {
       html = `<div class="mb-3"><label>職員</label><select id="inputStaff" class="form-select">${staffOpts}</select></div>`;
       if (cat === 'trip') html += `<div class="mb-3"><label>用務</label><input type="text" id="inputPurpose" class="form-control" value="${val('purpose')}"></div><div class="mb-3"><label>場所</label><input type="text" id="inputLocation" class="form-control" value="${val('location')}"></div>`;
@@ -413,6 +497,16 @@
     document.getElementById('modalTitle').innerText = '教室変更（固定設定）';
     document.getElementById('formContent').innerHTML = `<div class="alert alert-secondary mb-3"><small>通常: ${org} (${owner})</small></div><input type="hidden" id="inputRoom" value="${room}"><input type="hidden" id="inputPeriod" value="${period}"><div class="mb-3"><label>変更内容</label><div class="input-group"><input type="text" id="inputContent" class="form-control" value="${org}"><button type="button" class="btn btn-outline-danger" onclick="document.getElementById('inputContent').value='中止'">中止</button></div></div><div class="mb-3"><label>変更予約者</label><select id="inputReserver" class="form-select">${staffOpts}</select></div>`;
     if (modal) modal.show();
+  }
+
+  function openScheduleSettings() {
+    openModal('schedule_settings');
+  }
+
+  function toggleTimeInput() {
+    const mode = document.querySelector('input[name="timeMode"]:checked').value;
+    document.getElementById('cg_period').style.display = mode === 'period' ? 'block' : 'none';
+    document.getElementById('cg_time').style.display = mode === 'time' ? 'block' : 'none';
   }
 
   function submitForm() {
@@ -442,12 +536,39 @@
 
       if (!data.content) return alert('内容を入力してください');
 
-    } else if (cat === 'daily') {
-      data.time = document.getElementById('inputTime').value; data.content = document.getElementById('inputContent').value; data.note = document.getElementById('inputNote').value;
-      data.date = document.getElementById('inputStartDate').value; // Override Start
-      data.end_date = document.getElementById('inputEndDate').value; // New End
-    } else if (cat === 'meeting') {
-      data.name = document.getElementById('inputName').value; data.time = document.getElementById('inputTime').value; data.place = document.getElementById('inputPlace').value;
+    } else if (cat === 'daily' || cat === 'meeting') {
+      const isDaily = cat === 'daily';
+      // Time Construct
+      const mode = document.querySelector('input[name="timeMode"]:checked').value;
+      let timeStr = '';
+      if (mode === 'period') {
+        const sel = document.querySelector('input[name="periodSel"]:checked');
+        timeStr = sel ? sel.value : '';
+      } else {
+        const s = document.getElementById('inputTimeStart').value;
+        const e = document.getElementById('inputTimeEnd').value;
+        if (s) timeStr = s + (e ? ' 〜 ' + e : '');
+      }
+      data.time = timeStr;
+
+      if (isDaily) {
+        data.content = document.getElementById('inputContent').value;
+        data.note = document.getElementById('inputNote').value;
+        data.date = document.getElementById('inputStartDate').value;
+        data.end_date = document.getElementById('inputEndDate').value;
+      } else {
+        data.name = document.getElementById('inputName').value; // Meeting Name maps to inputName
+        data.place = document.getElementById('inputPlace').value;
+      }
+    } else if (cat === 'schedule_settings') {
+      const type = document.getElementById('inputScheduleType').value;
+      const main = document.getElementById('inputMainEvent').value;
+      const date = document.getElementById('datePicker').value;
+
+      if (modal) modal.hide();
+      showLoading(true);
+      google.script.run.withSuccessHandler(() => loadData()).withFailureHandler(onFailure).saveScheduleInfo(date, type, main);
+      return; // Special path
     } else if (cat === 'trip' || cat === 'leave') {
       data.staff = document.getElementById('inputStaff').value; data.time = document.getElementById('inputTime').value;
       if (cat === 'trip') { data.purpose = document.getElementById('inputPurpose').value; data.location = document.getElementById('inputLocation').value; }
