@@ -14,7 +14,9 @@
     ROOMS: ['選択1', '選択2', '選択3', '選択4', 'PC室', '会議室', '視聴覚室'],
     PERIODS: ['1限', '2限', '3限', '4限', '昼', '5限', '6限', '放課後'],
     DAYS_OF_WEEK: ['日', '月', '火', '水', '木', '金', '土'],
-    SCHEDULE_TYPES: ['通常校時', '短縮校時', '変則校時', '考査校時', '特別校時']
+    SCHEDULE_TYPES: ['通常校時', '短縮校時', '変則校時', '考査校時', '特別校時'],
+    ANNOUNCE_TARGETS: ['全職員', 'クラス担任', '分掌主任', '１年部職員', '２年部職員', '３年部職員', '生徒（全校）', '生徒（１年）', '生徒（２年）', '生徒（３年）'],
+    LEAVE_TYPES: ['年休', '振休', '夏季休暇', '職専免', 'その他']
   };
 
   // 初期化：エラーがあっても日付セットだけは進める
@@ -186,7 +188,7 @@
     items.forEach(d => {
       const editBtn = `<button class="btn btn-sm text-primary" onclick='openEditModal("daily", ${JSON.stringify(d)})'><i class="bi bi-pencil-square"></i></button>`;
       const delBtn = `<button class="btn btn-sm text-danger" onclick="deleteItem('${d.id}','daily','${escapeHtml(d.content)}')"><i class="bi bi-trash"></i></button>`;
-      const upBtn = `<button class="btn btn-sm text-secondary p-0 me-1" onclick="moveItem('daily', '${d.id}', -1)"><i class="bi bi-arrow-up-short"></i></button>`;
+      const upBtn = `<button class="btn btn-sm text-secondary p-0" onclick="moveItem('daily', '${d.id}', -1)"><i class="bi bi-arrow-up-short"></i></button>`;
       const downBtn = `<button class="btn btn-sm text-secondary p-0" onclick="moveItem('daily', '${d.id}', 1)"><i class="bi bi-arrow-down-short"></i></button>`;
 
       list.innerHTML += `
@@ -262,7 +264,7 @@
       const prio = a.priority === '◎' ? '<span class="text-danger fw-bold me-1">【重要】</span>' : '';
       const btns = `<button class="btn btn-sm text-primary p-0 me-2" onclick='openEditModal("announce", ${JSON.stringify(a)})'><i class="bi bi-pencil-square"></i></button>
                   <button class="btn btn-sm text-danger p-0" onclick="deleteItem('${a.id}','announce','伝達事項')"><i class="bi bi-trash"></i></button>`;
-      const upBtn = `<button class="btn btn-sm text-secondary p-0 me-1" onclick="moveItem('announce', '${a.id}', -1)"><i class="bi bi-arrow-up-short"></i></button>`;
+      const upBtn = `<button class="btn btn-sm text-secondary p-0" onclick="moveItem('announce', '${a.id}', -1)"><i class="bi bi-arrow-up-short"></i></button>`;
       const downBtn = `<button class="btn btn-sm text-secondary p-0" onclick="moveItem('announce', '${a.id}', 1)"><i class="bi bi-arrow-down-short"></i></button>`;
 
       list.innerHTML += `
@@ -516,14 +518,30 @@
     } else if (cat === 'trip' || cat === 'leave') {
       html = `<div class="mb-3"><label>職員</label><select id="inputStaff" class="form-select">${staffOpts}</select></div>`;
       if (cat === 'trip') html += `<div class="mb-3"><label>用務</label><input type="text" id="inputPurpose" class="form-control" value="${val('purpose')}"></div><div class="mb-3"><label>場所</label><input type="text" id="inputLocation" class="form-control" value="${val('location')}"></div>`;
-      else html += `<div class="mb-3"><label>種別</label><select id="inputType" class="form-select"><option>年休</option><option>振休</option><option>時間休</option><option>病休</option><option>夏季休暇</option><option>その他</option></select></div>`;
+      else {
+        const leaveOpts = CONFIG.LEAVE_TYPES.map(t => `<option value="${t}">${t}</option>`).join('');
+        html += `<div class="mb-3"><label>種別</label><select id="inputType" class="form-select">${leaveOpts}</select></div>`;
+      }
       html += `<div class="mb-3"><label>時間</label><input type="text" id="inputTime" class="form-control" value="${val('time') || '1日'}"></div>`;
       setTimeout(() => { if (data) { document.getElementById('inputStaff').value = data.staff_name || data.staff; if (cat === 'leave') document.getElementById('inputType').value = data.type; } }, 0);
     } else if (cat === 'announce') {
       const isPrio = val('priority') === '◎';
+      const targetOpts = CONFIG.ANNOUNCE_TARGETS.map(t => `<option value="${t}">${t}</option>`).join('');
+      // Default target logic if needed, or just select valid one
+      // If val('target') exists, we set it in setTimeout. 
+      // If new, maybe default to '全職員'? 
+
       html = `<div class="mb-3"><label>重要度</label><div class="btn-group w-100"><input type="radio" class="btn-check" name="prio" id="p1" value="・" ${!isPrio ? 'checked' : ''}><label class="btn btn-outline-secondary" for="p1">通常</label><input type="radio" class="btn-check" name="prio" id="p2" value="◎" ${isPrio ? 'checked' : ''}><label class="btn btn-outline-danger" for="p2">重要</label></div></div>
-            <div class="mb-3"><label>対象</label><input type="text" id="inputTarget" class="form-control" value="${val('target') || (typeArg === '生徒' ? '全学年' : '全職員')}"></div><div class="mb-3"><label>内容</label><textarea id="inputContent" class="form-control" rows="3">${val('content')}</textarea></div><div class="mb-3"><label>報告者</label><select id="inputReporter" class="form-select">${staffOpts}</select></div>`;
-      setTimeout(() => { if (data) document.getElementById('inputReporter').value = data.reporter; }, 0);
+            <div class="mb-3"><label>対象</label><select id="inputTarget" class="form-select">${targetOpts}</select></div><div class="mb-3"><label>内容</label><textarea id="inputContent" class="form-control" rows="3">${val('content')}</textarea></div><div class="mb-3"><label>報告者</label><select id="inputReporter" class="form-select">${staffOpts}</select></div>`;
+      setTimeout(() => {
+        if (data) {
+          document.getElementById('inputReporter').value = data.reporter;
+          document.getElementById('inputTarget').value = data.target;
+        } else {
+          // New entry defaults
+          document.getElementById('inputTarget').value = (typeArg && typeArg.includes('生徒')) ? '生徒（全校）' : '全職員';
+        }
+      }, 0);
     } else if (cat === 'room') {
       html = `<input type="hidden" id="inputRoom" value="${val('room')}"><input type="hidden" id="inputPeriod" value="${val('period')}"><div class="mb-3"><strong>${val('room')} - ${val('period')}</strong></div><div class="mb-3"><label>授業・内容</label><input type="text" id="inputContent" class="form-control" value="${val('content')}"></div><div class="mb-3"><label>予約者</label><select id="inputReserver" class="form-select">${staffOpts}</select></div>`;
       setTimeout(() => { if (data) document.getElementById('inputReserver').value = data.reserver; }, 0);
