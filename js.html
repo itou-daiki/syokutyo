@@ -78,10 +78,13 @@
       staffList = data.staff;
 
       // サーバー側でユーザー特定できた場合、それを優先
+      // サーバー側でユーザー特定できた場合、それを優先 (ユーザー要望により無効化)
+      /*
       if (data.currentUser) {
         currentUser = data.currentUser;
         localStorage.setItem('syokutyo_user', currentUser);
       }
+      */
 
       updateStaffSelect();
 

@@ -33,18 +33,19 @@
         </div>
       </div>
 
-      <div class="date-controller position-relative">
+      <div class="date-controller d-flex align-items-center">
         <button class="btn-nav-arrow" onclick="changeDate(-1)">＜</button>
 
-        <label for="datePicker" id="navDateDisplay" style="cursor: pointer; min-width: 140px; text-align: center;">
-          Loading...
-        </label>
+        <div class="position-relative mx-2">
+          <label id="navDateDisplay" style="cursor: pointer; min-width: 140px; text-align: center; display:block;">
+            Loading...
+          </label>
+          <input type="date" id="datePicker"
+            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10;"
+            onchange="onDatePickerChange()">
+        </div>
 
         <button class="btn-nav-arrow" onclick="changeDate(1)">＞</button>
-
-        <input type="date" id="datePicker"
-          style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10;"
-          onchange="onDatePickerChange()">
       </div>
 
       <div class="d-flex align-items-center gap-2">
