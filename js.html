@@ -182,24 +182,22 @@
   function renderDailyList(items, id) {
     const list = document.getElementById(id);
     list.innerHTML = items.length ? '' : '<li class="list-group-item text-center text-muted">予定なし</li>';
-    items.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    items.sort((a, b) => (a.order - b.order) || (a.time || '').localeCompare(b.time || ''));
     items.forEach(d => {
       const editBtn = `<button class="btn btn-sm text-primary" onclick='openEditModal("daily", ${JSON.stringify(d)})'><i class="bi bi-pencil-square"></i></button>`;
       const delBtn = `<button class="btn btn-sm text-danger" onclick="deleteItem('${d.id}','daily','${escapeHtml(d.content)}')"><i class="bi bi-trash"></i></button>`;
       const upBtn = `<button class="btn btn-sm text-secondary p-0 me-1" onclick="moveItem('daily', '${d.id}', -1)"><i class="bi bi-arrow-up-short"></i></button>`;
-      const downBtn = `<button class="btn btn-sm text-secondary p-0 me-2" onclick="moveItem('daily', '${d.id}', 1)"><i class="bi bi-arrow-down-short"></i></button>`;
+      const downBtn = `<button class="btn btn-sm text-secondary p-0" onclick="moveItem('daily', '${d.id}', 1)"><i class="bi bi-arrow-down-short"></i></button>`;
 
       list.innerHTML += `
-      <li class="list-group-item">
-        <div class="d-flex align-items-center">
-            <div class="d-flex flex-column me-2">${upBtn}${downBtn}</div>
-            <div class="flex-grow-1" style="cursor:pointer;" onclick='showDailyDetail(${JSON.stringify(d)})'>
-                <span class="fw-bold text-primary me-2">${escapeHtml(d.time)}</span>
-                <span class="fw-bold">${escapeHtml(d.content)}</span>
-                <small class="text-muted ms-2">${escapeHtml(d.note)}</small>
-            </div>
-            <div class="btn-action-group ms-2">${editBtn}${delBtn}</div>
-        </div>
+      <li class="list-group-item d-flex align-items-center gap-2">
+          <div class="d-flex align-items-center me-1 py-1 bg-light rounded" style="width:24px; flex-shrink:0; flex-direction: column;">${upBtn}${downBtn}</div>
+          <div class="text-truncate flex-grow-1" style="cursor:pointer; min-width: 0;" onclick='showDailyDetail(${JSON.stringify(d)})'>
+              <span class="fw-bold text-primary me-2">${escapeHtml(d.time)}</span>
+              <span class="fw-bold">${escapeHtml(d.content)}</span>
+              <small class="text-muted ms-2">${escapeHtml(d.note)}</small>
+          </div>
+          <div class="btn-action-group flex-shrink-0">${editBtn}${delBtn}</div>
       </li>`;
     });
   }
@@ -207,14 +205,30 @@
   function renderMeetings(items, id) {
     const list = document.getElementById(id);
     list.innerHTML = items.length ? '' : '<tr><td colspan="3" class="text-center text-muted py-3">予定なし</td></tr>';
+    // Table layout
     items.forEach(m => {
-      if (m.is_fixed) {
-        list.innerHTML += `<tr class="table-light text-muted"><td><i class="bi bi-arrow-repeat"></i> ${escapeHtml(m.name)}</td><td>${escapeHtml(m.time)}</td><td>${escapeHtml(m.place)}</td></tr>`;
-      } else {
-        const btns = `<button class="btn btn-sm text-primary p-0 me-2" onclick='openEditModal("meeting", ${JSON.stringify(m)})'><i class="bi bi-pencil-square"></i></button>
-                    <button class="btn btn-sm text-danger p-0" onclick="deleteItem('${m.id}','meeting','${escapeHtml(m.name)}')"><i class="bi bi-trash"></i></button>`;
-        list.innerHTML += `<tr><td>${escapeHtml(m.name)}</td><td>${escapeHtml(m.time)}</td><td><div class="d-flex justify-content-between"><span>${escapeHtml(m.place)}</span><div class="btn-action-group">${btns}</div></div></td></tr>`;
+      const rowClass = m.is_fixed ? 'table-light text-muted' : '';
+      const name = m.is_fixed ? `<i class="bi bi-arrow-repeat"></i> ${escapeHtml(m.name)}` : escapeHtml(m.name);
+
+      let actions = '';
+      if (!m.is_fixed) {
+        actions = `<div class="btn-action-group d-inline-flex ms-2">
+            <button class="btn btn-sm text-primary p-0 me-2" onclick='openEditModal("meeting", ${JSON.stringify(m)})'><i class="bi bi-pencil-square"></i></button>
+            <button class="btn btn-sm text-danger p-0" onclick="deleteItem('${m.id}','meeting','${escapeHtml(m.name)}')"><i class="bi bi-trash"></i></button>
+         </div>`;
       }
+
+      list.innerHTML += `
+        <tr class="${rowClass}">
+          <td class="text-truncate" style="max-width: 150px;" title="${escapeHtml(m.name)}">${name}</td>
+          <td class="text-nowrap">${escapeHtml(m.time)}</td>
+          <td class="text-truncate" style="max-width: 150px;">
+             <div class="d-flex justify-content-between align-items-center">
+               <span class="text-truncate" title="${escapeHtml(m.place)}">${escapeHtml(m.place)}</span>
+               ${actions}
+             </div>
+          </td>
+        </tr>`;
     });
   }
 
@@ -222,25 +236,45 @@
     const el = document.getElementById(headerId); if (el) el.textContent = items.length + '件';
     const list = document.getElementById(id);
     list.innerHTML = items.length ? '' : '<li class="list-group-item text-center text-muted">予定なし</li>';
+
     items.forEach(i => {
       const main = i.staff_name;
       const sub = cat === 'trip' ? `${i.location} (${i.purpose})` : i.type;
+      const time = i.time;
       const btns = `<button class="btn btn-sm text-primary p-0 me-2" onclick='openEditModal("${cat}", ${JSON.stringify(i)})'><i class="bi bi-pencil-square"></i></button>
                   <button class="btn btn-sm text-danger p-0" onclick="deleteItem('${i.id}','${cat}','${escapeHtml(main)}')"><i class="bi bi-trash"></i></button>`;
-      list.innerHTML += `<li class="list-group-item"><div class="w-100"><div class="d-flex justify-content-between mb-1"><span class="fw-bold">${escapeHtml(main)}</span><span class="badge bg-light text-dark border">${escapeHtml(i.time)}</span></div><div class="d-flex justify-content-between small"><span class="text-muted">${escapeHtml(sub)}</span><div class="btn-action-group">${btns}</div></div></div></li>`;
+
+      list.innerHTML += `
+      <li class="list-group-item d-flex align-items-center gap-2">
+        <div class="fw-bold text-nowrap">${escapeHtml(main)}</div>
+        <div class="badge bg-light text-dark border text-nowrap">${escapeHtml(time)}</div>
+        <div class="text-muted small text-truncate flex-grow-1" style="min-width: 0;" title="${escapeHtml(sub)}">${escapeHtml(sub)}</div>
+        <div class="btn-action-group flex-shrink-0">${btns}</div>
+      </li>`;
     });
   }
 
   function renderAnnouncements(id, items, cat) {
     const list = document.getElementById(id);
     list.innerHTML = items.length ? '' : '<li class="list-group-item text-center text-muted">なし</li>';
+    items.sort((a, b) => (a.order - b.order));
     items.forEach(a => {
-      const prio = a.priority === '◎' ? '<span class="text-danger fw-bold">【重要】</span> ' : '';
+      const prio = a.priority === '◎' ? '<span class="text-danger fw-bold me-1">【重要】</span>' : '';
       const btns = `<button class="btn btn-sm text-primary p-0 me-2" onclick='openEditModal("announce", ${JSON.stringify(a)})'><i class="bi bi-pencil-square"></i></button>
                   <button class="btn btn-sm text-danger p-0" onclick="deleteItem('${a.id}','announce','伝達事項')"><i class="bi bi-trash"></i></button>`;
       const upBtn = `<button class="btn btn-sm text-secondary p-0 me-1" onclick="moveItem('announce', '${a.id}', -1)"><i class="bi bi-arrow-up-short"></i></button>`;
-      const downBtn = `<button class="btn btn-sm text-secondary p-0 me-2" onclick="moveItem('announce', '${a.id}', 1)"><i class="bi bi-arrow-down-short"></i></button>`;
-      list.innerHTML += `<li class="list-group-item"><div class="w-100"><div class="d-flex justify-content-between mb-1"><span class="badge bg-light text-dark border">${escapeHtml(a.target)}</span><small class="text-muted">${escapeHtml(a.reporter)}</small></div><div class="d-flex align-items-start"> <div class="d-flex flex-column me-2">${upBtn}${downBtn}</div> <div class="flex-grow-1">${prio}${escapeHtml(a.content)}</div></div><div class="text-end btn-action-group">${btns}</div></div></li>`;
+      const downBtn = `<button class="btn btn-sm text-secondary p-0" onclick="moveItem('announce', '${a.id}', 1)"><i class="bi bi-arrow-down-short"></i></button>`;
+
+      list.innerHTML += `
+      <li class="list-group-item d-flex align-items-center gap-2">
+         <div class="d-flex align-items-center me-1 py-1 bg-light rounded" style="width:24px; flex-shrink:0; flex-direction: column;">${upBtn}${downBtn}</div>
+         <span class="badge bg-light text-dark border text-nowrap">${escapeHtml(a.target)}</span>
+         <small class="text-muted text-nowrap">${escapeHtml(a.reporter)}</small>
+         <div class="flex-grow-1 text-truncate" style="min-width: 0;">
+           ${prio}${escapeHtml(a.content)}
+         </div>
+         <div class="btn-action-group flex-shrink-0">${btns}</div>
+      </li>`;
     });
   }
 
@@ -249,25 +283,32 @@
     const filtered = currentUser ? tasks.filter(t => t.name === currentUser) : tasks;
     const el = document.getElementById('headerTaskInfo'); if (el) el.textContent = `${filtered.length}件` + (currentUser ? ` (${currentUser})` : '');
     list.innerHTML = filtered.length ? '' : '<li class="list-group-item text-center text-muted py-4">タスクなし</li>';
+
     filtered.forEach(t => {
-      // 3-state logic: 0=未着手(circle), 1=着中(play/gear), 2=完了(check-circle-fill)
       let iconClass = 'bi-circle text-muted';
       let statusVal = parseInt(t.check);
-      if (isNaN(statusVal)) statusVal = (t.check === true || t.check === 'TRUE') ? 2 : 0; // 旧データ互換
+      if (isNaN(statusVal)) statusVal = (t.check === true || t.check === 'TRUE') ? 2 : 0;
 
       if (statusVal === 1) iconClass = 'bi-play-circle-fill text-warning';
       else if (statusVal === 2) iconClass = 'bi-check-circle-fill text-success';
 
-      const contentClass = statusVal === 2 ? 'task-content task-done' : 'task-content';
-      // const newStatus = (statusVal + 1) % 3; // Cycle 0->1->2->0
+      const contentClass = statusVal === 2 ? 'fw-bold text-decoration-line-through opacity-50' : 'fw-bold';
 
       const btns = `<button class="btn btn-sm text-primary p-0 me-2" onclick='openEditModal("task", ${JSON.stringify(t)})'><i class="bi bi-pencil-square"></i></button>
                   <button class="btn btn-sm text-danger p-0" onclick="deleteItem('${t.id}','task','${escapeHtml(t.content)}')"><i class="bi bi-trash"></i></button>`;
 
-      // Cycle status on click
-      const detailBtn = t.detail ? `<span class="ms-2 text-primary" style="cursor:pointer;" onclick='showTaskDetail(${JSON.stringify(t)})'><i class="bi bi-info-circle"></i> 詳細</span>` : '';
+      const detailBtn = t.detail ? `<span class="ms-1 text-primary" style="cursor:pointer;" onclick='showTaskDetail(${JSON.stringify(t)})'><i class="bi bi-info-circle"></i></span>` : '';
 
-      list.innerHTML += `<li class="list-group-item task-item"><i class="bi ${iconClass} fs-4 task-check" onclick="cycleTaskStatus('${t.id}', ${statusVal})"></i><div class="${contentClass}"><div class="fw-bold">${escapeHtml(t.content)}</div><div class="task-meta">${escapeHtml(t.name)} | 期限: ${escapeHtml(t.due_date)}${detailBtn}</div></div><div class="btn-action-group">${btns}</div></li>`;
+      list.innerHTML += `
+      <li class="list-group-item task-item d-flex align-items-center gap-2">
+        <i class="bi ${iconClass} fs-4 task-check flex-shrink-0" onclick="cycleTaskStatus('${t.id}', ${statusVal})"></i>
+        <div class="flex-grow-1 text-truncate" style="min-width: 0;">
+           <span class="${contentClass}">${escapeHtml(t.content)}</span>
+           <span class="text-muted small ms-2">| ${escapeHtml(t.name)} ${escapeHtml(t.due_date)}</span>
+           ${detailBtn}
+        </div>
+        <div class="btn-action-group flex-shrink-0">${btns}</div>
+      </li>`;
     });
   }
 

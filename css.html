@@ -5,12 +5,18 @@
 
   :root {
     /* Main Colors - 視認性を高めるため濃いめに */
-    --primary-color: #2563eb;      /* Blue */
-    --secondary-color: #475569;    /* Slate */
-    --success-color: #059669;      /* Emerald */
-    --danger-color: #dc2626;       /* Red */
-    --info-color: #0891b2;         /* Cyan */
-    --purple-color: #7c3aed;       /* Violet */
+    --primary-color: #2563eb;
+    /* Blue */
+    --secondary-color: #475569;
+    /* Slate */
+    --success-color: #059669;
+    /* Emerald */
+    --danger-color: #dc2626;
+    /* Red */
+    --info-color: #0891b2;
+    /* Cyan */
+    --purple-color: #7c3aed;
+    /* Violet */
 
     /* Backgrounds */
     --bg-body: #f1f5f9;
@@ -34,8 +40,8 @@
 
     /* UI Elements */
     --radius-md: 12px;
-    --shadow-sm: 0 1px 3px rgba(0,0,0,0.1);
-    --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   }
 
   body {
@@ -51,7 +57,7 @@
     border-bottom: 1px solid #cbd5e1;
     padding: 0.75rem 1rem !important;
   }
-  
+
   /* User Select Capsule */
   .user-select-capsule {
     display: flex;
@@ -62,6 +68,7 @@
     padding: 0.25rem 0.5rem 0.25rem 1rem;
     margin-left: 1rem;
   }
+
   .user-select-capsule select {
     border: none;
     background: transparent;
@@ -86,9 +93,16 @@
   }
 
   .btn-nav-arrow {
-    background: none; border: none; font-weight: bold; cursor: pointer; color: #64748b;
+    background: none;
+    border: none;
+    font-weight: bold;
+    cursor: pointer;
+    color: #64748b;
   }
-  .btn-nav-arrow:hover { color: var(--primary-color); }
+
+  .btn-nav-arrow:hover {
+    color: var(--primary-color);
+  }
 
   /* Cards */
   .card {
@@ -111,12 +125,35 @@
   }
 
   /* Header Variants (Stronger) */
-  .header-primary { background: var(--header-bg-primary); color: var(--header-text-primary); }
-  .header-success { background: var(--header-bg-success); color: var(--header-text-success); }
-  .header-danger  { background: var(--header-bg-danger); color: var(--header-text-danger); }
-  .header-info    { background: var(--header-bg-info); color: var(--header-text-info); }
-  .header-purple  { background: var(--header-bg-purple); color: var(--header-text-purple); }
-  .header-secondary { background: var(--header-bg-secondary); color: var(--header-text-secondary); }
+  .header-primary {
+    background: var(--header-bg-primary);
+    color: var(--header-text-primary);
+  }
+
+  .header-success {
+    background: var(--header-bg-success);
+    color: var(--header-text-success);
+  }
+
+  .header-danger {
+    background: var(--header-bg-danger);
+    color: var(--header-text-danger);
+  }
+
+  .header-info {
+    background: var(--header-bg-info);
+    color: var(--header-text-info);
+  }
+
+  .header-purple {
+    background: var(--header-bg-purple);
+    color: var(--header-text-purple);
+  }
+
+  .header-secondary {
+    background: var(--header-bg-secondary);
+    color: var(--header-text-secondary);
+  }
 
   .header-title-wrapper {
     display: flex;
@@ -124,7 +161,7 @@
     gap: 0.5rem;
     font-size: 1.1rem;
   }
-  
+
   .header-meta {
     font-size: 0.9rem;
     font-weight: normal;
@@ -145,20 +182,23 @@
   /* List Items */
   .list-group-item {
     border: none;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid #cbd5e1;
     padding: 0.75rem 1rem;
     display: flex;
     justify-content: space-between;
     align-items: start;
   }
-  
+
   .btn-action-group {
     display: flex;
     gap: 0.25rem;
     opacity: 0.6;
     transition: opacity 0.2s;
   }
-  .list-group-item:hover .btn-action-group { opacity: 1; }
+
+  .list-group-item:hover .btn-action-group {
+    opacity: 1;
+  }
 
   /* =============================================================================
      Matrix Table (Classroom) - Revised
@@ -175,7 +215,8 @@
     padding: 0.75rem;
     position: sticky;
     top: 0;
-    z-index: 20; /* Higher than row headers */
+    z-index: 20;
+    /* Higher than row headers */
     border-bottom: 2px solid #cbd5e1;
     text-align: center;
     vertical-align: middle;
@@ -193,10 +234,12 @@
     border-right: 2px solid #cbd5e1;
     border-bottom: 1px solid #e2e8f0;
     text-align: center;
-    vertical-align: middle; /* 上下中央揃えを適用 */
+    vertical-align: middle;
+    /* 上下中央揃えを適用 */
     font-weight: 700;
     color: #334155;
-    box-shadow: 2px 0 5px rgba(0,0,0,0.05); /* 固定列の影 */
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.05);
+    /* 固定列の影 */
   }
 
   /* Data Cells */
@@ -204,48 +247,89 @@
     border: 1px solid #e2e8f0;
     padding: 0.5rem;
     height: 100px;
-    vertical-align: middle; /* データセルも上下中央 */
+    vertical-align: middle;
+    /* データセルも上下中央 */
     text-align: center;
     cursor: pointer;
     font-size: 1rem;
     font-weight: 500;
   }
-  
+
   .matrix-table td:hover {
     background: #f0f9ff;
     box-shadow: inset 0 0 0 2px var(--primary-color);
   }
-  
+
   /* Top-Left Corner Cell */
   .matrix-table thead th:first-child {
     position: sticky;
     left: 0;
     top: 0;
-    z-index: 30; /* Highest priority */
+    z-index: 30;
+    /* Highest priority */
     background: #f1f5f9;
     border-right: 2px solid #cbd5e1;
   }
-  
-  .cell-occupied { background: #d1fae5 !important; color: #065f46; }
-  .cell-fixed { background: #f3f4f6 !important; color: #64748b; border: 2px dashed #cbd5e1 !important; }
-  .cell-cancelled { background: #fee2e2 !important; text-decoration: line-through; color: #991b1b; }
+
+  .cell-occupied {
+    background: #d1fae5 !important;
+    color: #065f46;
+  }
+
+  .cell-fixed {
+    background: #f3f4f6 !important;
+    color: #64748b;
+    border: 2px dashed #cbd5e1 !important;
+  }
+
+  .cell-cancelled {
+    background: #fee2e2 !important;
+    text-decoration: line-through;
+    color: #991b1b;
+  }
 
   /* Task Item */
   .task-item {
-    display: flex; align-items: center; gap: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
   }
+
   .task-check {
-    width: 20px; height: 20px; cursor: pointer;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
   }
-  .task-content { flex: 1; }
-  .task-meta { font-size: 0.8rem; color: #64748b; }
-  .task-done { text-decoration: line-through; opacity: 0.6; }
+
+  .task-content {
+    flex: 1;
+  }
+
+  .task-meta {
+    font-size: 0.8rem;
+    color: #64748b;
+  }
+
+  .task-done {
+    text-decoration: line-through;
+    opacity: 0.6;
+  }
 
   /* Loading */
   .loading-overlay {
-    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(255,255,255,0.7); display: flex; justify-content: center; align-items: center;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
     z-index: 9999;
   }
-  .visually-hidden { display: none; }
+
+  .visually-hidden {
+    display: none;
+  }
 </style>
