@@ -68,21 +68,27 @@ function isValidCategory(cat) { return ['daily', 'trip', 'leave', 'meeting', 'an
 // =============================================================================
 // データ取得API
 // =============================================================================
+// =============================================================================
+// データ取得API
+// =============================================================================
 function getData(dateStr) {
   try {
     if (!isValidDate(dateStr)) throw new Error(ERROR_MESSAGES.INVALID_DATE);
 
-    const todayData = getDataForDate(dateStr);
+    // Batch Load All Data
+    const allData = getAllSheetData();
+
+    const todayData = getDataForDate(dateStr, allData);
 
     // 明日
     const tomorrow = new Date(dateStr);
     tomorrow.setDate(tomorrow.getDate() + 1);
     const tomorrowStr = Utilities.formatDate(tomorrow, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-    const tomorrowData = getDataForDate(tomorrowStr);
+    const tomorrowData = getDataForDate(tomorrowStr, allData);
 
     // タスクデータ（全件取得し、フロントでフィルタリング）
-    let tasks = getTasks();
-    const staffList = getStaffData();
+    let tasks = getTasks(allData.task);
+    const staffList = getStaffData(allData.staff);
 
     // ユーザー識別 & フィルタリング
     const userEmail = Session.getActiveUser().getEmail();
@@ -106,7 +112,27 @@ function getData(dateStr) {
   }
 }
 
-function getDataForDate(dateStr) {
+function getAllSheetData() {
+  const ss = getSS();
+  const sheets = ss.getSheets();
+  const data = {};
+
+  // Pre-fetch all sheets to memory if possible
+  // Iterate needed sheets
+  [SHEETS.DAILY, SHEETS.TRIP, SHEETS.LEAVE, SHEETS.MEETING,
+  SHEETS.ANNOUNCE, SHEETS.ROOM, SHEETS.FIXED_MEETING,
+  SHEETS.FIXED_CLASS, SHEETS.TASK, SHEETS.EVENT, SHEETS.STAFF].forEach(name => {
+    const sh = ss.getSheetByName(name);
+    if (sh && sh.getLastRow() > 1) {
+      data[name] = sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).getValues();
+    } else {
+      data[name] = [];
+    }
+  });
+  return data;
+}
+
+function getDataForDate(dateStr, allData) {
   const result = {
     date: dateStr,
     daily: [], trips: [], leaves: [], meetings: [],
@@ -120,10 +146,13 @@ function getDataForDate(dateStr) {
 
   const dayOfWeek = ['日', '月', '火', '水', '木', '金', '土'][targetDate.getDay()];
 
+  // Helper to use memory data
+  const getMem = (name) => allData[name] || [];
+
   // 行事: Start <= Target <= End
   // A:id, B:date, C:time, D:content, E:note, F:end_date, G:display_order, H:schedule_type
   let scheduleType = '';
-  result.daily = getRows(SHEETS.DAILY).filter(r => {
+  result.daily = getMem(SHEETS.DAILY).filter(r => {
     const start = r[1] ? new Date(formatDate(r[1]).replace(/-/g, '/')) : null;
     const end = r[5] ? new Date(formatDate(r[5]).replace(/-/g, '/')) : (start ? new Date(start) : null); // Default end to start
 
@@ -144,7 +173,7 @@ function getDataForDate(dateStr) {
   // Main Event & Schedule Info (EVENT Sheet)
   // A:ID, B:Date, C:Content, D:ScheduleType, E:CleaningStatus
   let mainEventObj = null;
-  const events = getRows(SHEETS.EVENT);
+  const events = getMem(SHEETS.EVENT);
   // Find matching date
   const matchedEvent = events.find(r => {
     const d = r[1] ? new Date(formatDate(r[1]).replace(/-/g, '/')) : null;
@@ -176,20 +205,20 @@ function getDataForDate(dateStr) {
   result.scheduleType = mainEventObj.scheduleType;
 
   // 出張: date == target
-  result.trips = getRows(SHEETS.TRIP).filter(r => formatDate(r[1]) === dateStr)
+  result.trips = getMem(SHEETS.TRIP).filter(r => formatDate(r[1]) === dateStr)
     .map(r => ({ id: r[0], date: r[1], staff_name: r[2] || '', purpose: r[3] || '', location: r[4] || '', time: r[5] || '', note: r[6] || '' }));
   result.counts.trip = result.trips.length;
 
   // 休暇: date == target
-  result.leaves = getRows(SHEETS.LEAVE).filter(r => formatDate(r[1]) === dateStr)
+  result.leaves = getMem(SHEETS.LEAVE).filter(r => formatDate(r[1]) === dateStr)
     .map(r => ({ id: r[0], date: r[1], staff_name: r[2] || '', type: r[3] || '', time: r[4] || '', note: r[5] || '' }));
   result.counts.leave = result.leaves.length;
 
   // 会議: date == target OR Fixed Meeting
-  const normalMeetings = getRows(SHEETS.MEETING).filter(r => formatDate(r[1]) === dateStr)
+  const normalMeetings = getMem(SHEETS.MEETING).filter(r => formatDate(r[1]) === dateStr)
     .map(r => ({ id: r[0], date: r[1], name: r[2] || '', time: r[3] || '', place: r[4] || '', is_fixed: false }));
 
-  const fixedMeetings = getRows(SHEETS.FIXED_MEETING).filter(r => r[0] === dayOfWeek)
+  const fixedMeetings = getMem(SHEETS.FIXED_MEETING).filter(r => r[0] === dayOfWeek)
     .map(r => ({ id: 'fixed', date: dateStr, name: r[1] || '', time: r[2] || '', place: r[3] || '', is_fixed: true }));
 
   result.meetings = [...fixedMeetings, ...normalMeetings];
@@ -197,7 +226,7 @@ function getDataForDate(dateStr) {
 
   // 伝達事項: date == target
   // A:id, B:date, C:type, D:priority, E:target, F:content, G:reporter, H:display_order
-  const allAnnounce = getRows(SHEETS.ANNOUNCE).filter(r => formatDate(r[1]) === dateStr)
+  const allAnnounce = getMem(SHEETS.ANNOUNCE).filter(r => formatDate(r[1]) === dateStr)
     .map(r => ({
       id: r[0], date: r[1], type: r[2], priority: r[3],
       target: r[4] || '', content: r[5] || '', reporter: r[6] || '',
@@ -208,18 +237,27 @@ function getDataForDate(dateStr) {
   result.announcements_student = allAnnounce.filter(a => a.type === '生徒');
 
   // 特別教室
-  const nr = getRowsFixedCols(SHEETS.ROOM, 6).filter(r => formatDate(r[1]) === dateStr)
+  // Room logic needs care for column count if FixedCols used.
+  // getMem returns all cols (from getDataRange equivalent above).
+  // ROOM: A:id, B:date, C:period, D:room, E:content, F:reserver
+  // Indices: 0,1,2,3,4,5
+  const nr = getMem(SHEETS.ROOM).filter(r => formatDate(r[1]) === dateStr)
     .map(r => ({ id: r[0], date: r[1], room: r[3] || '', period: r[2] || '', content: r[4] || '', reserver: r[5] || '', is_fixed: false }));
-  const fr = getRowsFixedCols(SHEETS.FIXED_CLASS, 5).filter(r => r[0] === dayOfWeek)
+
+  // FIXED: A:day, B:period, C:room, D:content, E:reserver
+  // Indices: 0,1,2,3,4
+  const fr = getMem(SHEETS.FIXED_CLASS).filter(r => r[0] === dayOfWeek)
     .map(r => ({ id: 'fixed', date: dateStr, period: r[1] || '', room: r[2] || '', content: r[3] || '', reserver: r[4] || '', is_fixed: true }));
   result.reservations = [...fr, ...nr];
 
   return result;
 }
 
-function getTasks() {
+function getTasks(taskRows) {
   // タスク: id, name, roll, content, due_date, check, detail
-  return getRows(SHEETS.TASK).map(r => ({
+  // accept optional argument
+  const rows = taskRows || getRows(SHEETS.TASK);
+  return rows.map(r => ({
     id: r[0],
     name: r[1] || '',
     roll: r[2] || '',
@@ -554,9 +592,9 @@ function getRowsFixedCols(sheetName, colCount) {
     return sheet.getRange(2, 1, sheet.getLastRow() - 1, colCount).getValues();
   } catch (e) { return []; }
 }
-function getStaffData() {
+function getStaffData(staffRows) {
   try {
-    const rows = getRows(SHEETS.STAFF);
+    const rows = staffRows || getRows(SHEETS.STAFF);
     // 0:id, 1:name, 2:role, 3:order, 4:email, 5:grade, 6:dept1, 7:dept2, 8:dept3, 9:subject, 10:role_type, 11:chief_type
     return rows.map(r => ({
       id: r[0] || '', name: r[1] || '', role: r[2] || '', order: r[3] || 999, email: r[4] || '',
