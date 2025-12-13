@@ -129,7 +129,7 @@
       const clnClass = evt.cleaningStatus === '通常清掃' ? 'badge bg-outline-info text-dark border me-1' : 'badge bg-info text-dark me-1';
       line += `<span class="${clnClass}">${escapeHtml(evt.cleaningStatus)}</span>`;
 
-      html += `<div class="mt-1" style="cursor:pointer;" onclick='openScheduleSettings("${escapeHtml(evt.scheduleType)}", "${escapeHtml(evt.cleaningStatus)}", "${escapeHtml(evt.content)}")'>${line}</div>`;
+      html += `<div class="mt-1" style="cursor:pointer;" onclick='openScheduleSettings()'>${line}</div>`;
     }
 
     el.innerHTML = html;
@@ -548,22 +548,21 @@
     if (modal) modal.show();
   }
 
-  function openScheduleSettings(curType, curClean, curMain) {
-    // Determine defaults if args missing (e.g. from button click)
-    // Actually args passed from updateHeader only. If manual call?
-    // Let's rely on data loaded in memory if possible? 
-    // Simplified: Just clear and let user type, or passing args is better.
-    // If we call from header, we pass args.
+  function openScheduleSettings() {
+    // Read from currentData for defaults
+    let curType = '', curClean = '', curMain = '';
+    if (currentData && currentData.today && currentData.today.main_event) {
+      const evt = currentData.today.main_event;
+      curType = evt.scheduleType;
+      curClean = evt.cleaningStatus;
+      curMain = evt.content;
+    }
 
     document.getElementById('entryCategory').value = 'schedule_settings';
-    document.getElementById('entryId').value = ''; // No ID needed really, date based
+    document.getElementById('entryId').value = '';
     document.getElementById('modalTitle').innerText = '本日の予定設定';
 
     const typeOpts = CONFIG.SCHEDULE_TYPES.map(t => `<option value="${t}">${t}</option>`).join('');
-
-    // We don't have Select for Cleaning yet in CONFIG, user said "Standard or Cut" mainly.
-    // Let's provide an input with datalist or just input.
-    // If nothing entered -> "通常清掃"
 
     let html = `<div class="mb-3">
                   <label class="form-label">校時</label>
@@ -592,13 +591,9 @@
 
     // Set values after render
     setTimeout(() => {
-      if (curType) document.getElementById('inputScheduleType').value = curType;
-      else document.getElementById('inputScheduleType').value = '通常校時';
-
-      if (curClean) document.getElementById('inputCleaning').value = curClean;
-      else document.getElementById('inputCleaning').value = '通常清掃';
-
-      if (curMain) document.getElementById('inputMainEvent').value = curMain;
+      document.getElementById('inputScheduleType').value = curType || '通常校時';
+      document.getElementById('inputCleaning').value = curClean || '通常清掃';
+      document.getElementById('inputMainEvent').value = curMain || '';
     }, 0);
   }
 
