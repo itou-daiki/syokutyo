@@ -135,6 +135,18 @@
     el.innerHTML = html;
   }
 
+  function setToday() {
+    currentDate = new Date();
+    updateDatePicker();
+    loadData();
+  }
+
+  function changeDate(d) {
+    currentDate.setDate(currentDate.getDate() + d);
+    updateDatePicker();
+    loadData();
+  }
+
   function updateDatePicker() {
     const datePicker = document.getElementById('datePicker');
     const navDisplay = document.getElementById('navDateDisplay');
