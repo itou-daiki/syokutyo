@@ -570,8 +570,15 @@
                 </div>`;
     } else if (cat === 'trip' || cat === 'leave') {
       html = `<div class="mb-3"><label>職員</label><select id="inputStaff" class="form-select">${staffOpts}</select></div>`;
-      if (cat === 'trip') html += `<div class="mb-3"><label>用務</label><input type="text" id="inputPurpose" class="form-control" value="${val('purpose')}"></div><div class="mb-3"><label>場所</label><input type="text" id="inputLocation" class="form-control" value="${val('location')}"></div>`;
-      else {
+
+      // 出張の場合は日付範囲を追加
+      if (cat === 'trip') {
+        const pickerVal = document.getElementById('datePicker').value;
+        const sDate = (data && data.date) ? (typeof data.date === 'string' ? data.date.replace(/\//g, '-') : data.date) : pickerVal;
+        const eDate = (data && data.end_date) ? (typeof data.end_date === 'string' ? data.end_date.replace(/\//g, '-') : data.end_date) : sDate;
+        html += `<div class="row mb-3"><div class="col"><label>開始日</label><input type="date" id="inputStartDate" class="form-control" value="${sDate}"></div><div class="col"><label>終了日</label><input type="date" id="inputEndDate" class="form-control" value="${eDate}"></div></div>`;
+        html += `<div class="mb-3"><label>用務</label><input type="text" id="inputPurpose" class="form-control" value="${val('purpose')}"></div><div class="mb-3"><label>場所</label><input type="text" id="inputLocation" class="form-control" value="${val('location')}"></div>`;
+      } else {
         const leaveOpts = CONFIG.LEAVE_TYPES.map(t => `<option value="${t}">${t}</option>`).join('');
         html += `<div class="mb-3"><label>種別</label><select id="inputType" class="form-select">${leaveOpts}</select></div>`;
       }
@@ -729,7 +736,12 @@
       return; // Special path
     } else if (cat === 'trip' || cat === 'leave') {
       data.staff = document.getElementById('inputStaff').value; data.time = document.getElementById('inputTime').value;
-      if (cat === 'trip') { data.purpose = document.getElementById('inputPurpose').value; data.location = document.getElementById('inputLocation').value; }
+      if (cat === 'trip') {
+        data.purpose = document.getElementById('inputPurpose').value;
+        data.location = document.getElementById('inputLocation').value;
+        data.date = document.getElementById('inputStartDate').value;
+        data.end_date = document.getElementById('inputEndDate').value;
+      }
       else { data.type = document.getElementById('inputType').value; }
     } else if (cat === 'announce') {
       data.priority = document.querySelector('input[name="prio"]:checked').value; data.target = document.getElementById('inputTarget').value; data.content = document.getElementById('inputContent').value; data.reporter = document.getElementById('inputReporter').value; data.type = document.getElementById('announceType').value;
