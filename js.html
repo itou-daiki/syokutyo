@@ -703,7 +703,12 @@
     } else if (cat === 'daily' || cat === 'meeting') {
       const isDaily = cat === 'daily';
       // Time Construct
-      const mode = document.querySelector('input[name="timeMode"]:checked').value;
+      const modeEl = document.querySelector('input[name="timeMode"]:checked');
+      if (!modeEl) {
+        alert('時間指定モードが選択されていません');
+        return;
+      }
+      const mode = modeEl.value;
       let timeStr = '';
       if (mode === 'period') {
         const sel = document.querySelector('input[name="periodSel"]:checked');
@@ -720,6 +725,16 @@
         data.note = document.getElementById('inputNote').value;
         data.date = document.getElementById('inputStartDate').value;
         data.end_date = document.getElementById('inputEndDate').value;
+
+        // Validation
+        if (!data.content || !data.content.trim()) {
+          alert('内容を入力してください');
+          return;
+        }
+        if (!data.date) {
+          alert('開始日を選択してください');
+          return;
+        }
       } else {
         data.name = document.getElementById('inputName').value; // Meeting Name maps to inputName
         data.place = document.getElementById('inputPlace').value;
@@ -749,9 +764,17 @@
       data.room = document.getElementById('inputRoom').value; data.period = document.getElementById('inputPeriod').value; data.content = document.getElementById('inputContent').value; data.reserver = document.getElementById('inputReserver').value;
     }
 
+    console.log('Submitting data:', cat, data);
     if (modal) modal.hide();
     showLoading(true);
-    google.script.run.withSuccessHandler(() => { clearCache(); loadData(); }).withFailureHandler(onFailure).saveData(cat, data);
+    google.script.run.withSuccessHandler((result) => {
+      console.log('Save success:', result);
+      clearCache();
+      loadData();
+    }).withFailureHandler((error) => {
+      console.error('Save failed:', error);
+      onFailure(error);
+    }).saveData(cat, data);
   }
 
   function clearCache() {
