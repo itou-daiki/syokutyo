@@ -91,12 +91,12 @@ function getData(dateStr) {
       return cached;
     }
 
-    // 前後3日間の日付範囲を計算
+    // 前後7日間の日付範囲を計算（フロントエンドキャッシュ用に広めに取得）
     const targetDate = new Date(dateStr);
     const startDate = new Date(targetDate);
-    startDate.setDate(startDate.getDate() - 3);
+    startDate.setDate(startDate.getDate() - 7);
     const endDate = new Date(targetDate);
-    endDate.setDate(endDate.getDate() + 3);
+    endDate.setDate(endDate.getDate() + 7);
 
     // Batch Load All Data (日付範囲でフィルタリング)
     const allData = getAllSheetData(startDate, endDate);
@@ -126,7 +126,12 @@ function getData(dateStr) {
       today: todayData,
       tomorrow: tomorrowData,
       tasks: tasks,
-      currentUser: currentUser ? currentUser.name : null
+      currentUser: currentUser ? currentUser.name : null,
+      // キャッシュ範囲情報を追加
+      cacheRange: {
+        start: Utilities.formatDate(startDate, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+        end: Utilities.formatDate(endDate, Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      }
     });
 
     // キャッシュに保存（5分間）
