@@ -496,12 +496,6 @@
         // Initialize list
         setTimeout(updateTaskUserList, 100);
       }
-    } else if (cat === 'daily') {
-      // Start/End date support
-      const pickerVal = document.getElementById('datePicker').value;
-      const sDate = (data && data.date) ? data.date.replace(/\//g, '-') : pickerVal;
-      const eDate = (data && data.end_date) ? data.end_date.replace(/\//g, '-') : sDate; // Default end to start or picker
-
     } else if (cat === 'daily' || cat === 'meeting') {
       const isDaily = cat === 'daily';
       // Time Logic
