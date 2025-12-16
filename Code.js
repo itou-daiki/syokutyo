@@ -268,9 +268,13 @@ function getDataForDate(dateStr, allData) {
   // For backward compatibility briefly:
   result.scheduleType = mainEventObj.scheduleType;
 
-  // 出張: date == target
-  result.trips = getMem(SHEETS.TRIP).filter(r => formatDate(r[1]) === dateStr)
-    .map(r => ({ id: r[0], date: r[1], staff_name: r[2] || '', purpose: r[3] || '', location: r[4] || '', time: r[5] || '', note: r[6] || '' }));
+  // 出張: Start <= Target <= End (行事と同様の範囲判定)
+  result.trips = getMem(SHEETS.TRIP).filter(r => {
+    const start = r[1] ? new Date(formatDate(r[1]).replace(/-/g, '/')) : null;
+    const end = r[7] ? new Date(formatDate(r[7]).replace(/-/g, '/')) : (start ? new Date(start) : null); // 列H（インデックス7）が終了日
+    if (!start) return false;
+    return normalize(start) <= targetTime && targetTime <= normalize(end);
+  }).map(r => ({ id: r[0], date: r[1], staff_name: r[2] || '', purpose: r[3] || '', location: r[4] || '', time: r[5] || '', note: r[6] || '', end_date: formatDate(r[7]) }));
   result.counts.trip = result.trips.length;
 
   // 休暇: date == target
@@ -364,7 +368,8 @@ function saveData(category, data) {
         break;
       case 'trip':
         sheetName = SHEETS.TRIP;
-        rowData = [data.date, data.staff, data.purpose, data.location, data.time || '1日', data.note || ''];
+        // A:id, B:date, C:staff, D:purpose, E:location, F:time, G:note, H:end_date
+        rowData = [data.date, data.staff, data.purpose, data.location, data.time || '1日', data.note || '', data.end_date || data.date];
         break;
       case 'leave':
         sheetName = SHEETS.LEAVE;
