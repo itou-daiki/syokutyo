@@ -91,12 +91,12 @@ function getData(dateStr) {
       return cached;
     }
 
-    // 前後1週間の日付範囲を計算
+    // 前後3日間の日付範囲を計算
     const targetDate = new Date(dateStr);
     const startDate = new Date(targetDate);
-    startDate.setDate(startDate.getDate() - 7);
+    startDate.setDate(startDate.getDate() - 3);
     const endDate = new Date(targetDate);
-    endDate.setDate(endDate.getDate() + 7);
+    endDate.setDate(endDate.getDate() + 3);
 
     // Batch Load All Data (日付範囲でフィルタリング)
     const allData = getAllSheetData(startDate, endDate);
