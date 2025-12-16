@@ -41,6 +41,13 @@ function getSS() {
 }
 function logError(fn, e) { console.error(`[${fn}] Error:`, e.message, e.stack); }
 function logInfo(fn, m) { console.info(`[${fn}] ${m}`); }
+function clearDataCache() {
+  try {
+    CacheService.getScriptCache().removeAll([]);
+  } catch (e) {
+    console.warn('Cache clear failed', e);
+  }
+}
 
 // =============================================================================
 // Web App エントリーポイント (変更なし)
@@ -75,6 +82,15 @@ function getData(dateStr) {
   try {
     if (!isValidDate(dateStr)) throw new Error(ERROR_MESSAGES.INVALID_DATE);
 
+    // キャッシュキーを作成（日付 + 時刻で5分単位）
+    const cacheKey = `data_${dateStr}_${Math.floor(Date.now() / (5 * 60 * 1000))}`;
+    const cache = CacheService.getScriptCache();
+    const cached = cache.get(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
     // Batch Load All Data
     const allData = getAllSheetData();
 
@@ -98,13 +114,18 @@ function getData(dateStr) {
       tasks = tasks.filter(t => t.name === currentUser.name);
     }
 
-    return JSON.stringify({
+    const result = JSON.stringify({
       staff: staffList,
       today: todayData,
       tomorrow: tomorrowData,
       tasks: tasks,
       currentUser: currentUser ? currentUser.name : null
     });
+
+    // キャッシュに保存（5分間）
+    cache.put(cacheKey, result, 300);
+
+    return result;
 
   } catch (e) {
     logError('getData', e);
@@ -368,11 +389,13 @@ function saveData(category, data) {
         }
 
         sheet.getRange(rowIndex, 2, 1, writeData.length).setValues([writeData]);
+        clearDataCache();
         return { success: true, message: 'データを更新しました', id: id };
       } else {
         // IDが見つからない場合は新規追加扱いにするかエラーにするか。ここでは新規追加に倒す
         const newRow = [id, ...rowData];
         sheet.appendRow(newRow);
+        clearDataCache();
         return { success: true, message: 'データが見つからなかったため新規追加しました', id: id };
       }
 
@@ -392,12 +415,14 @@ function saveData(category, data) {
         // ここではappendRowループで実装（大量ではない前提）
         rowsToAdd.forEach(row => sheet.appendRow(row));
 
+        clearDataCache();
         return { success: true, message: `${rowsToAdd.length}件のタスクを一括登録しました` };
       }
 
       // 通常の単一行追加
       const newRow = [id, ...rowData];
       sheet.appendRow(newRow);
+      clearDataCache();
       return { success: true, message: 'データを保存しました', id: id };
     }
 
@@ -418,6 +443,7 @@ function toggleTaskCheck(id, isChecked) {
         // 0=未着手, 1=着手中, 2=完了 (数値として保存)
         const newVal = parseInt(isChecked);
         sheet.getRange(i + 1, 6).setValue(isNaN(newVal) ? 0 : newVal);
+        clearDataCache();
         return { success: true };
       }
     }
@@ -446,6 +472,7 @@ function deleteEvent(id, category) {
   for (let i = 1; i < data.length; i++) {
     if (data[i][0] == id) {
       sheet.deleteRow(i + 1);
+      clearDataCache();
       return { success: true, message: '削除しました' };
     }
   }
@@ -532,6 +559,7 @@ function moveItem(category, id, direction, dateStr) {
 
   sheet.getRange(targetRowIdx + 1, orderColIdx + 1).setValue(targetOrderVal);
   sheet.getRange(swapRowIdx + 1, orderColIdx + 1).setValue(swapOrderVal);
+  clearDataCache();
 }
 
 function saveScheduleInfo(dateStr, scheduleType, mainEventContent, cleaningStatus) {
@@ -574,6 +602,7 @@ function saveScheduleInfo(dateStr, scheduleType, mainEventContent, cleaningStatu
       cleaningStatus || '通常清掃'
     ]);
   }
+  clearDataCache();
 }
 
 // =============================================================================

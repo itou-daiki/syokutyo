@@ -77,7 +77,7 @@
 
       updateHeader(currentDate, data.today.daily.length, 'headerTodayInfo', data);
       const tmr = new Date(currentDate); tmr.setDate(tmr.getDate() + 1);
-      updateHeader(tmr, data.tomorrow.daily.length, 'headerTomorrowInfo', null); // Tomorrow functionality limitation: data.tomorrow doesn't have scheduleType attached by backend usually unless we strictly pass it. 
+      updateHeader(tmr, data.tomorrow.daily.length, 'headerTomorrowInfo', null); // Tomorrow functionality limitation: data.tomorrow doesn't have scheduleType attached by backend usually unless we strictly pass it.
       // Current backend `getData` returns `today` and `tomorrow` objects.
       // We updated `getDataForDate` to fallback `scheduleType` etc.
       // So data.tomorrow MUST have it if we used the same function.
@@ -98,7 +98,8 @@
       renderTaskList(data.tasks);
       renderRoomMatrix(data.today.reservations);
 
-      loadWeather();
+      // 天気情報は遅延読み込み（ページ表示を優先）
+      setTimeout(() => loadWeather(), 100);
     } catch (e) { console.error(e); }
     finally {
       const loading = document.getElementById('loading');
@@ -701,7 +702,32 @@
   function deleteItem(id, cat, name) { if (!confirm(`「${name}」を削除しますか？`)) return; showLoading(true); google.script.run.withSuccessHandler(() => loadData()).withFailureHandler(onFailure).deleteEvent(id, cat); }
   function onFailure(e) { alert('エラー: ' + e.message); showLoading(false); }
   function escapeHtml(t) { if (!t) return ''; return t.toString().replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m])); }
-  function loadWeather() { google.script.run.withSuccessHandler(j => { try { const d = JSON.parse(j); document.getElementById('weatherInfo').innerHTML = `<i class="bi bi-sun-fill text-warning fs-4 me-1"></i><span class="fw-bold">${Math.round(d.current.temperature_2m)}°C</span>` } catch (e) { } }).getWeatherData(); }
+  function loadWeather() {
+    // キャッシュ確認（30分有効）
+    const cached = localStorage.getItem('weather_cache');
+    const cacheTime = localStorage.getItem('weather_cache_time');
+    const now = Date.now();
+
+    if (cached && cacheTime && (now - parseInt(cacheTime)) < 30 * 60 * 1000) {
+      // キャッシュが有効な場合は使用
+      try {
+        const d = JSON.parse(cached);
+        document.getElementById('weatherInfo').innerHTML = `<i class="bi bi-sun-fill text-warning fs-4 me-1"></i><span class="fw-bold">${Math.round(d.current.temperature_2m)}°C</span>`;
+        return;
+      } catch (e) { }
+    }
+
+    // キャッシュがない、または期限切れの場合は取得
+    google.script.run.withSuccessHandler(j => {
+      try {
+        const d = JSON.parse(j);
+        document.getElementById('weatherInfo').innerHTML = `<i class="bi bi-sun-fill text-warning fs-4 me-1"></i><span class="fw-bold">${Math.round(d.current.temperature_2m)}°C</span>`;
+        // キャッシュに保存
+        localStorage.setItem('weather_cache', j);
+        localStorage.setItem('weather_cache_time', Date.now().toString());
+      } catch (e) { }
+    }).getWeatherData();
+  }
   function showLoading(b) { const l = document.getElementById('loading'); if (l) l.style.display = b ? 'flex' : 'none'; }
   // Helper for Task Filtering UI
   function updateTaskUserList() {
