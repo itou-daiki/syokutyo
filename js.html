@@ -162,7 +162,8 @@
 
     if (navDisplay) {
       // 日付表示を更新 (例: 2025/12/11)
-      navDisplay.textContent = `${y}/${parseInt(m)}/${parseInt(d)}`;
+      const day = CONFIG.DAYS_OF_WEEK[currentDate.getDay()];
+      navDisplay.textContent = `${y}/${parseInt(m)}/${parseInt(d)} (${day})`;
     }
   }
 
@@ -175,7 +176,8 @@
     const navDisplay = document.getElementById('navDateDisplay');
     if (navDisplay) {
       const parts = datePicker.value.split('-');
-      navDisplay.textContent = `${parts[0]}/${parseInt(parts[1])}/${parseInt(parts[2])}`;
+      const day = CONFIG.DAYS_OF_WEEK[currentDate.getDay()];
+      navDisplay.textContent = `${parts[0]}/${parseInt(parts[1])}/${parseInt(parts[2])} (${day})`;
     }
     loadData();
   }
@@ -187,11 +189,13 @@
     const list = document.getElementById(id);
     list.innerHTML = items.length ? '' : '<li class="list-group-item text-center text-muted">予定なし</li>';
     items.sort((a, b) => (a.order - b.order) || (a.time || '').localeCompare(b.time || ''));
-    items.forEach(d => {
+    items.forEach((d, index) => {
+      const isFirst = index === 0;
+      const isLast = index === items.length - 1;
       const editBtn = `<button class="btn btn-sm text-primary" onclick='openEditModal("daily", ${JSON.stringify(d)})'><i class="bi bi-pencil-square"></i></button>`;
       const delBtn = `<button class="btn btn-sm text-danger" onclick="deleteItem('${d.id}','daily','${escapeHtml(d.content)}')"><i class="bi bi-trash"></i></button>`;
-      const upBtn = `<button class="btn btn-sm text-secondary p-0" onclick="moveItem('daily', '${d.id}', -1)"><i class="bi bi-arrow-up-short"></i></button>`;
-      const downBtn = `<button class="btn btn-sm text-secondary p-0" onclick="moveItem('daily', '${d.id}', 1)"><i class="bi bi-arrow-down-short"></i></button>`;
+      const upBtn = isFirst ? '' : `<button class="btn btn-sm text-secondary p-0" onclick="moveItem('daily', '${d.id}', -1)"><i class="bi bi-arrow-up-short"></i></button>`;
+      const downBtn = isLast ? '' : `<button class="btn btn-sm text-secondary p-0" onclick="moveItem('daily', '${d.id}', 1)"><i class="bi bi-arrow-down-short"></i></button>`;
 
       list.innerHTML += `
       <li class="list-group-item d-flex align-items-center gap-2">
@@ -262,12 +266,14 @@
     const list = document.getElementById(id);
     list.innerHTML = items.length ? '' : '<li class="list-group-item text-center text-muted">なし</li>';
     items.sort((a, b) => (a.order - b.order));
-    items.forEach(a => {
+    items.forEach((a, index) => {
+      const isFirst = index === 0;
+      const isLast = index === items.length - 1;
       const prio = a.priority === '◎' ? '<span class="text-danger fw-bold me-1">【重要】</span>' : '';
       const btns = `<button class="btn btn-sm text-primary p-0 me-2" onclick='openEditModal("announce", ${JSON.stringify(a)})'><i class="bi bi-pencil-square"></i></button>
                   <button class="btn btn-sm text-danger p-0" onclick="deleteItem('${a.id}','announce','伝達事項')"><i class="bi bi-trash"></i></button>`;
-      const upBtn = `<button class="btn btn-sm text-secondary p-0" onclick="moveItem('announce', '${a.id}', -1)"><i class="bi bi-arrow-up-short"></i></button>`;
-      const downBtn = `<button class="btn btn-sm text-secondary p-0" onclick="moveItem('announce', '${a.id}', 1)"><i class="bi bi-arrow-down-short"></i></button>`;
+      const upBtn = isFirst ? '' : `<button class="btn btn-sm text-secondary p-0" onclick="moveItem('announce', '${a.id}', -1)"><i class="bi bi-arrow-up-short"></i></button>`;
+      const downBtn = isLast ? '' : `<button class="btn btn-sm text-secondary p-0" onclick="moveItem('announce', '${a.id}', 1)"><i class="bi bi-arrow-down-short"></i></button>`;
 
       list.innerHTML += `
       <li class="list-group-item d-flex align-items-center gap-2">
