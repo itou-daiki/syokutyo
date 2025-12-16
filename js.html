@@ -164,6 +164,11 @@
       // 日付表示を更新 (例: 2025/12/11)
       const day = CONFIG.DAYS_OF_WEEK[currentDate.getDay()];
       navDisplay.textContent = `${y}/${parseInt(m)}/${parseInt(d)} (${day})`;
+
+      // ラベルクリックで日付ピッカーを開く
+      navDisplay.onclick = function() {
+        datePicker.showPicker && datePicker.showPicker();
+      };
     }
   }
 
