@@ -91,8 +91,15 @@ function getData(dateStr) {
       return cached;
     }
 
-    // Batch Load All Data
-    const allData = getAllSheetData();
+    // 前後1週間の日付範囲を計算
+    const targetDate = new Date(dateStr);
+    const startDate = new Date(targetDate);
+    startDate.setDate(startDate.getDate() - 7);
+    const endDate = new Date(targetDate);
+    endDate.setDate(endDate.getDate() + 7);
+
+    // Batch Load All Data (日付範囲でフィルタリング)
+    const allData = getAllSheetData(startDate, endDate);
 
     const todayData = getDataForDate(dateStr, allData);
 
@@ -133,17 +140,46 @@ function getData(dateStr) {
   }
 }
 
-function getAllSheetData() {
+function getAllSheetData(startDate, endDate) {
   try { createMissingSheets(); } catch (e) { console.error('Auto-creation failed', e); }
   const ss = getSS();
-  const sheets = ss.getSheets();
   const data = {};
 
-  // Pre-fetch all sheets to memory if possible
-  // Iterate needed sheets
-  [SHEETS.DAILY, SHEETS.TRIP, SHEETS.LEAVE, SHEETS.MEETING,
-  SHEETS.ANNOUNCE, SHEETS.ROOM, SHEETS.FIXED_MEETING,
-  SHEETS.FIXED_CLASS, SHEETS.TASK, SHEETS.EVENT, SHEETS.STAFF].forEach(name => {
+  // 日付フィルタリングが必要なシート
+  const dateFilteredSheets = [SHEETS.DAILY, SHEETS.TRIP, SHEETS.LEAVE, SHEETS.MEETING,
+                               SHEETS.ANNOUNCE, SHEETS.ROOM, SHEETS.EVENT];
+
+  // 日付フィルタリング不要なシート（固定データ）
+  const noFilterSheets = [SHEETS.FIXED_MEETING, SHEETS.FIXED_CLASS, SHEETS.STAFF, SHEETS.TASK];
+
+  // 日付範囲を正規化（時刻を0にして比較）
+  const startTime = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate()).getTime();
+  const endTime = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate()).getTime();
+
+  // 日付フィルタリング対象シートの処理
+  dateFilteredSheets.forEach(name => {
+    const sh = ss.getSheetByName(name);
+    if (sh && sh.getLastRow() > 1) {
+      const allRows = sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).getValues();
+      // 列B（インデックス1）に日付があると仮定してフィルタリング
+      data[name] = allRows.filter(row => {
+        const dateVal = row[1]; // 列B
+        if (!dateVal) return false;
+        try {
+          const rowDate = new Date(dateVal);
+          const rowTime = new Date(rowDate.getFullYear(), rowDate.getMonth(), rowDate.getDate()).getTime();
+          return rowTime >= startTime && rowTime <= endTime;
+        } catch (e) {
+          return false;
+        }
+      });
+    } else {
+      data[name] = [];
+    }
+  });
+
+  // フィルタリング不要なシートの処理
+  noFilterSheets.forEach(name => {
     const sh = ss.getSheetByName(name);
     if (sh && sh.getLastRow() > 1) {
       data[name] = sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).getValues();
@@ -151,6 +187,7 @@ function getAllSheetData() {
       data[name] = [];
     }
   });
+
   return data;
 }
 
