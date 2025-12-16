@@ -113,6 +113,7 @@ function getData(dateStr) {
 }
 
 function getAllSheetData() {
+  try { createMissingSheets(); } catch (e) { console.error('Auto-creation failed', e); }
   const ss = getSS();
   const sheets = ss.getSheets();
   const data = {};
