@@ -214,6 +214,24 @@
   function renderMeetings(items, id) {
     const list = document.getElementById(id);
     list.innerHTML = items.length ? '' : '<tr><td colspan="3" class="text-center text-muted py-3">予定なし</td></tr>';
+
+    // 時限の順序を定義
+    const periodOrder = {
+      '1限': 1, '2限': 2, '3限': 3, '4限': 4,
+      '昼': 5, '昼休み': 5,
+      '5限': 6, '6限': 7, '7限': 8,
+      '放課後': 9
+    };
+
+    // 時限順にソート
+    items.sort((a, b) => {
+      const orderA = periodOrder[a.time] || 999;
+      const orderB = periodOrder[b.time] || 999;
+      if (orderA !== orderB) return orderA - orderB;
+      // 同じ時限の場合は名前でソート
+      return (a.name || '').localeCompare(b.name || '');
+    });
+
     // Table layout
     items.forEach(m => {
       const rowClass = m.is_fixed ? 'table-light text-muted' : '';
@@ -388,9 +406,17 @@
 
   // Modal & Forms
   function openModal(cat, typeArg) { setupModalForm(cat, typeArg, null); if (modal) modal.show(); else alert('Modal機能は現在使用できません'); }
+  function openModalForTomorrow(cat, typeArg) {
+    // 明日の日付を設定
+    const tomorrow = new Date(currentDate);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = `${tomorrow.getFullYear()}-${('0' + (tomorrow.getMonth() + 1)).slice(-2)}-${('0' + tomorrow.getDate()).slice(-2)}`;
+    setupModalForm(cat, typeArg, null, tomorrowStr);
+    if (modal) modal.show(); else alert('Modal機能は現在使用できません');
+  }
   function openEditModal(cat, data) { setupModalForm(cat, data.type || '', data); if (modal) modal.show(); }
 
-  function setupModalForm(cat, typeArg, data) {
+  function setupModalForm(cat, typeArg, data, customDate) {
     document.getElementById('entryCategory').value = cat;
     document.getElementById('entryId').value = data ? data.id : '';
     document.getElementById('announceType').value = typeArg || '';
@@ -474,7 +500,7 @@
 
       let dateInputs = '';
       if (isDaily) {
-        const pickerVal = document.getElementById('datePicker').value;
+        const pickerVal = customDate || document.getElementById('datePicker').value;
         const sDate = (data && data.date) ? data.date.replace(/\//g, '-') : pickerVal;
         const eDate = (data && data.end_date) ? data.end_date.replace(/\//g, '-') : sDate;
         dateInputs = `<div class="row mb-3"><div class="col"><label>開始日</label><input type="date" id="inputStartDate" class="form-control" value="${sDate}"></div><div class="col"><label>終了日</label><input type="date" id="inputEndDate" class="form-control" value="${eDate}"></div></div>`;
