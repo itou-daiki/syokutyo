@@ -9,6 +9,8 @@
   let staffList = [];
   let modal = null;
   let currentUser = ''; // 元: localStorage.getItem('syokutyo_user')
+  let dataCache = null; // フロントエンドキャッシュ
+  let cacheRange = { start: null, end: null }; // キャッシュの有効範囲
 
   const CONFIG = {
     ROOMS: ['選択1', '選択2', '選択3', '選択4', 'PC室', '会議室', '視聴覚室'],
@@ -41,7 +43,7 @@
   // =============================================================================
   // データ操作
   // =============================================================================
-  function loadData() {
+  function loadData(forceReload = false) {
     const loading = document.getElementById('loading');
     if (loading) loading.style.display = 'flex';
 
@@ -52,15 +54,37 @@
       datePicker.value = `${d.getFullYear()}-${('0' + (d.getMonth() + 1)).slice(-2)}-${('0' + d.getDate()).slice(-2)}`;
     }
 
+    const requestedDate = datePicker.value;
+
+    // キャッシュチェック（強制リロード時はスキップ）
+    if (!forceReload && dataCache && cacheRange.start && cacheRange.end) {
+      if (requestedDate >= cacheRange.start && requestedDate <= cacheRange.end) {
+        // キャッシュ範囲内なので、キャッシュから表示
+        onDataLoaded(JSON.stringify(dataCache), true);
+        return;
+      }
+    }
+
+    // キャッシュにないのでサーバーから取得
     google.script.run
       .withSuccessHandler(onDataLoaded)
       .withFailureHandler(onFailure)
-      .getData(datePicker.value);
+      .getData(requestedDate);
   }
 
-  function onDataLoaded(json) {
+  function onDataLoaded(json, fromCache = false) {
     try {
       const data = JSON.parse(json);
+
+      // 新規取得の場合はキャッシュに保存
+      if (!fromCache) {
+        dataCache = data;
+        if (data.cacheRange) {
+          cacheRange.start = data.cacheRange.start;
+          cacheRange.end = data.cacheRange.end;
+        }
+      }
+
       currentData = data;
       staffList = data.staff;
 
@@ -375,7 +399,7 @@
   function moveItem(cat, id, dir) {
     const date = document.getElementById('datePicker').value;
     showLoading(true);
-    google.script.run.withSuccessHandler(() => loadData()).withFailureHandler(onFailure).moveItem(cat, id, dir, date);
+    google.script.run.withSuccessHandler(() => { clearCache(); loadData(); }).withFailureHandler(onFailure).moveItem(cat, id, dir, date);
   }
 
   function renderRoomMatrix(reservations) {
@@ -707,7 +731,7 @@
 
       if (modal) modal.hide();
       showLoading(true);
-      google.script.run.withSuccessHandler(() => loadData()).withFailureHandler(onFailure).saveScheduleInfo(date, type, main, clean);
+      google.script.run.withSuccessHandler(() => { clearCache(); loadData(); }).withFailureHandler(onFailure).saveScheduleInfo(date, type, main, clean);
       return; // Special path
     } else if (cat === 'trip' || cat === 'leave') {
       data.staff = document.getElementById('inputStaff').value; data.time = document.getElementById('inputTime').value;
@@ -721,11 +745,16 @@
 
     if (modal) modal.hide();
     showLoading(true);
-    google.script.run.withSuccessHandler(() => loadData()).withFailureHandler(onFailure).saveData(cat, data);
+    google.script.run.withSuccessHandler(() => { clearCache(); loadData(); }).withFailureHandler(onFailure).saveData(cat, data);
   }
 
-  function toggleTask(id, checked) { google.script.run.withSuccessHandler(() => loadData()).withFailureHandler(onFailure).toggleTaskCheck(id, checked); }
-  function deleteItem(id, cat, name) { if (!confirm(`「${name}」を削除しますか？`)) return; showLoading(true); google.script.run.withSuccessHandler(() => loadData()).withFailureHandler(onFailure).deleteEvent(id, cat); }
+  function clearCache() {
+    dataCache = null;
+    cacheRange = { start: null, end: null };
+  }
+
+  function toggleTask(id, checked) { google.script.run.withSuccessHandler(() => { clearCache(); loadData(); }).withFailureHandler(onFailure).toggleTaskCheck(id, checked); }
+  function deleteItem(id, cat, name) { if (!confirm(`「${name}」を削除しますか？`)) return; showLoading(true); google.script.run.withSuccessHandler(() => { clearCache(); loadData(); }).withFailureHandler(onFailure).deleteEvent(id, cat); }
   function onFailure(e) { alert('エラー: ' + e.message); showLoading(false); }
   function escapeHtml(t) { if (!t) return ''; return t.toString().replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m])); }
   function loadWeather() {
