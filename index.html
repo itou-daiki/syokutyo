@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <title>職員朝礼伝達システム</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"
+    integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/airbnb.css">
+  <?!= include('css'); ?>
+</head>
+
+<body>
+
+  <div id="loading" class="loading-overlay" style="display: none;">
+    <div class="spinner-border text-primary" role="status">
+      <span class="visually-hidden">読み込み中...</span>
+    </div>
+  </div>
+
+  <nav class="navbar sticky-top" aria-label="メインナビゲーション">
+    <div class="container-fluid d-flex align-items-center justify-content-between">
+      <div class="d-flex align-items-center">
+        <a class="navbar-brand d-flex align-items-center gap-2" href="#">
+          <i class="bi bi-journal-text"></i>
+          <span class="d-none d-sm-inline">朝礼伝達</span>
+        </a>
+      </div>
+
+      <div class="date-controller d-flex align-items-center">
+        <button class="btn-nav-arrow" onclick="changeDate(-1)" aria-label="前の日へ">＜</button>
+
+        <div class="mx-2">
+          <input type="text" id="datePicker" class="date-nav-input"
+            readonly aria-label="日付を選択" placeholder="日付を選択">
+        </div>
+
+        <button class="btn-nav-arrow" onclick="changeDate(1)" aria-label="次の日へ">＞</button>
+        <button class="btn btn-sm btn-outline-secondary rounded-pill ms-1" onclick="setToday()" aria-label="今日に戻る" style="font-size:0.75rem; padding:2px 10px;">今日</button>
+      </div>
+
+      <div class="d-flex align-items-center gap-2">
+        <button class="btn btn-sm btn-outline-dark rounded-pill px-3" style="height:36px;"
+          onclick="toggleDiaryView()" id="btnDiary" aria-label="学校日誌モード"><i class="bi bi-journal-bookmark me-1"></i><span class="d-none d-sm-inline">日誌</span></button>
+        <button class="btn btn-sm btn-outline-secondary rounded-circle copy-btn" style="width:44px;height:44px;"
+          onclick="copySchedule(this)" aria-label="スケジュールをコピー"><i class="bi bi-clipboard"></i></button>
+        <button class="btn btn-sm btn-outline-primary rounded-circle" style="width:44px;height:44px;"
+          onclick="loadData(true)" aria-label="データを更新"><i class="bi bi-arrow-clockwise"></i></button>
+        <div id="weatherInfo"></div>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container-fluid pt-4">
+
+    <div class="row g-4 mb-4">
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-header header-primary">
+            <div class="header-title-wrapper">
+              <i class="bi bi-calendar-check-fill"></i>
+              <span>本日の行事</span>
+              <span id="headerTodayInfo" class="header-meta"></span>
+            </div>
+            <button class="btn btn-sm btn-light text-primary" onclick="openModal('daily')" aria-label="行事を追加"><i
+                class="bi bi-plus-lg"></i></button>
+          </div>
+          <div class="card-body p-0 card-body-scroll">
+            <div class="table-responsive"><table class="table table-bordered data-table mb-0"><tbody id="dailyList"></tbody></table></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-header header-info">
+            <div class="header-title-wrapper">
+              <i class="bi bi-calendar-plus"></i>
+              <span>明日の行事</span>
+              <span id="headerTomorrowInfo" class="header-meta"></span>
+            </div>
+            <button class="btn btn-sm btn-light text-info" onclick="openModalForTomorrow('daily')" aria-label="明日の行事を追加"><i
+                class="bi bi-plus-lg"></i></button>
+          </div>
+          <div class="card-body p-0 card-body-scroll">
+            <div class="table-responsive"><table class="table table-bordered data-table mb-0"><tbody id="dailyListTomorrow"></tbody></table></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-header header-secondary">
+            <div class="header-title-wrapper">
+              <i class="bi bi-people-fill"></i>
+              <span>本日の会議</span>
+              <span id="headerMeetingInfo" class="header-meta"></span>
+            </div>
+            <button class="btn btn-sm btn-light text-secondary" onclick="openModal('meeting')" aria-label="会議を追加"><i
+                class="bi bi-plus-lg"></i></button>
+          </div>
+          <div class="card-body p-0 card-body-scroll">
+            <div class="table-responsive">
+              <table class="table table-bordered data-table mb-0">
+                <tbody id="meetingListMain"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-6">
+        <div class="card h-100 border-warning" style="border-left: 5px solid #f59e0b;">
+          <div class="card-header" style="background: #fffbeb; color: #b45309;">
+            <div class="header-title-wrapper">
+              <i class="bi bi-check-circle-fill"></i>
+              <span>タスク</span>
+              <span id="headerTaskInfo" class="header-meta">0件</span>
+            </div>
+            <button class="btn btn-sm btn-light text-warning" onclick="openModal('task')" aria-label="タスクを追加"><i
+                class="bi bi-plus-lg"></i></button>
+          </div>
+          <div class="card-body p-0 card-body-scroll">
+            <div class="table-responsive"><table class="table table-bordered data-table mb-0"><tbody id="taskList">
+              <tr><td colspan="4" class="text-center text-muted py-4">タスクなし</td></tr>
+            </tbody></table></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-header header-danger">
+            <div class="header-title-wrapper">
+              <i class="bi bi-megaphone-fill"></i>
+              <span>伝達事項（職員）</span>
+            </div>
+            <button class="btn btn-sm btn-light text-danger" onclick="openModal('announce', '職員')" aria-label="職員伝達事項を追加"><i
+                class="bi bi-plus-lg"></i></button>
+          </div>
+          <div class="card-body p-0 card-body-scroll">
+            <div class="table-responsive"><table class="table table-bordered data-table mb-0"><tbody id="announceStaffList"></tbody></table></div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-header header-info">
+            <div class="header-title-wrapper">
+              <i class="bi bi-broadcast"></i>
+              <span>伝達事項（生徒）</span>
+            </div>
+            <button class="btn btn-sm btn-light text-info" onclick="openModal('announce', '生徒')" aria-label="生徒伝達事項を追加"><i
+                class="bi bi-plus-lg"></i></button>
+          </div>
+          <div class="card-body p-0 card-body-scroll">
+            <div class="table-responsive"><table class="table table-bordered data-table mb-0"><tbody id="announceStudentList"></tbody></table></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-header header-success">
+            <div class="header-title-wrapper">
+              <i class="bi bi-briefcase-fill"></i>
+              <span>出張</span>
+              <span id="headerTripInfo" class="header-meta"></span>
+            </div>
+            <button class="btn btn-sm btn-light text-success" onclick="openModal('trip')" aria-label="出張を追加"><i
+                class="bi bi-plus-lg"></i></button>
+          </div>
+          <div class="card-body p-0 card-body-scroll">
+            <div class="table-responsive"><table class="table table-bordered data-table mb-0"><tbody id="tripList"></tbody></table></div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-header header-secondary">
+            <div class="header-title-wrapper">
+              <i class="bi bi-house-door-fill"></i>
+              <span>休暇</span>
+              <span id="headerLeaveInfo" class="header-meta"></span>
+            </div>
+            <button class="btn btn-sm btn-light text-secondary" onclick="openModal('leave')" aria-label="休暇を追加"><i
+                class="bi bi-plus-lg"></i></button>
+          </div>
+          <div class="card-body p-0 card-body-scroll">
+            <div class="table-responsive"><table class="table table-bordered data-table mb-0"><tbody id="leaveList"></tbody></table></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+      <div class="col-12">
+        <div class="card h-100">
+          <div class="card-header" style="background: #fef3c7; color: #92400e;">
+            <div class="header-title-wrapper">
+              <i class="bi bi-chat-square-text-fill"></i>
+              <span>報告</span>
+              <span id="headerReportInfo" class="header-meta"></span>
+            </div>
+            <button class="btn btn-sm btn-light text-dark" onclick="openModal('report')" aria-label="報告を追加"><i
+                class="bi bi-plus-lg"></i></button>
+          </div>
+          <div class="card-body p-0 card-body-scroll">
+            <div class="table-responsive"><table class="table table-bordered data-table mb-0"><tbody id="reportList"></tbody></table></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card h-100 mb-4">
+      <div class="card-header header-purple">
+        <div class="header-title-wrapper">
+          <i class="bi bi-grid-3x3"></i>
+          <span>特別教室予約状況</span>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table matrix-table mb-0" id="roomTable">
+            <thead></thead>
+            <tbody id="roomBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- 学校日誌担当者モード -->
+  <div id="diaryView" class="container-fluid pt-4" style="display:none;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h4 class="fw-bold mb-0"><i class="bi bi-journal-bookmark me-2"></i>学校日誌 <span id="diaryDate" class="text-muted"></span></h4>
+      <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary btn-sm" onclick="printDiary()" aria-label="印刷"><i class="bi bi-printer me-1"></i>印刷</button>
+        <button class="btn btn-outline-dark btn-sm" onclick="toggleDiaryView()">戻る</button>
+      </div>
+    </div>
+
+    <!-- テーブル1: 行事・連絡事項 -->
+    <div class="card mb-4">
+      <div class="card-header header-primary d-flex justify-content-between align-items-center">
+        <span class="fw-bold">行事・連絡事項</span>
+        <button class="btn btn-sm btn-light copy-btn" onclick="copyDiaryTable('diaryWrap1', this)" aria-label="テーブルをコピー"><i class="bi bi-clipboard"></i></button>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-bordered diary-table diary-selectable mb-0" id="diaryWrap1">
+          <thead><tr><th style="width:50%">学校行事</th><th style="width:50%">連絡事項</th></tr></thead>
+          <tbody id="diaryTable1"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- テーブル2: 出張 -->
+    <div class="card mb-4">
+      <div class="card-header header-success d-flex justify-content-between align-items-center">
+        <span class="fw-bold">出張</span>
+        <button class="btn btn-sm btn-light copy-btn" onclick="copyDiaryTable('diaryWrap2', this)" aria-label="テーブルをコピー"><i class="bi bi-clipboard"></i></button>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-bordered diary-table diary-selectable mb-0" id="diaryWrap2">
+          <thead><tr><th style="width:15%">種別</th><th style="width:25%">氏名</th><th style="width:20%">時間</th><th style="width:40%">用務</th></tr></thead>
+          <tbody id="diaryTable2"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- テーブル3: 休暇等 -->
+    <div class="card mb-4">
+      <div class="card-header header-secondary d-flex justify-content-between align-items-center">
+        <span class="fw-bold">休暇等</span>
+        <button class="btn btn-sm btn-light copy-btn" onclick="copyDiaryTable('diaryWrap3', this)" aria-label="テーブルをコピー"><i class="bi bi-clipboard"></i></button>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-bordered diary-table diary-selectable mb-0" id="diaryWrap3">
+          <thead><tr><th style="width:15%">種別</th><th style="width:25%">氏名</th><th style="width:20%">時間</th><th style="width:40%">備考</th></tr></thead>
+          <tbody id="diaryTable3"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- テーブル4: 報告 -->
+    <div class="card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center" style="background: #fef3c7; color: #92400e;">
+        <span class="fw-bold">報告</span>
+        <button class="btn btn-sm btn-light copy-btn" onclick="copyDiaryTable('diaryWrap4', this)" aria-label="テーブルをコピー"><i class="bi bi-clipboard"></i></button>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-bordered diary-table diary-selectable mb-0" id="diaryWrap4">
+          <thead><tr><th style="width:15%">種別</th><th style="width:30%">報告者</th><th style="width:55%">内容</th></tr></thead>
+          <tbody id="diaryTable4"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="entryModal" tabindex="-1" aria-labelledby="modalTitle">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content shadow-lg">
+        <div class="modal-header bg-light">
+          <h5 class="modal-title fw-bold" id="modalTitle">登録</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
+        </div>
+        <div class="modal-body p-4">
+          <form id="entryForm">
+            <input type="hidden" id="entryCategory">
+            <input type="hidden" id="entryId">
+            <input type="hidden" id="announceType">
+            <div id="formContent"></div>
+          </form>
+        </div>
+        <div class="modal-footer bg-light border-0">
+          <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">キャンセル</button>
+          <button type="button" class="btn btn-primary rounded-pill px-4" id="btnSubmit" onclick="submitForm()">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="infoModal" tabindex="-1" aria-labelledby="infoModalTitle">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content shadow-lg">
+        <div class="modal-header bg-white">
+          <h5 class="modal-title fw-bold" id="infoModalTitle">詳細</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="閉じる"></button>
+        </div>
+        <div class="modal-body p-4 text-start" id="infoModalBody"></div>
+        <div class="modal-footer bg-white border-0">
+          <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">閉じる</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast通知 -->
+  <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 10000;">
+    <div id="appToast" class="toast align-items-center border-0" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="d-flex">
+        <div class="toast-body" id="toastBody"></div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="閉じる"></button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
+    integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ja.js"></script>
+  <?!= include('js'); ?>
+</body>
+
+</html>

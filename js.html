@@ -1,0 +1,1580 @@
+<script>
+  /**
+   * 職員朝礼伝達システム - Frontend Logic (v12.0)
+   * XSS-safe, Toast notifications, Accessible
+   */
+
+  // =============================================================================
+  // ユーティリティ関数
+  // =============================================================================
+
+  function escapeHtml(t) {
+    if (!t) return '';
+    var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+    return t.toString().replace(/[&<>"']/g, function(m) { return map[m]; });
+  }
+
+  function showLoading(b) {
+    var l = document.getElementById('loading');
+    if (l) l.style.display = b ? 'flex' : 'none';
+  }
+
+  function formatDateStr(d) {
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+  }
+
+  // XSS-safe data lookup map: stores data objects by ID, onclick uses ID only
+  var _itemData = {};
+
+  function storeItem(item) {
+    var key = item.id || ('tmp_' + Math.random().toString(36).slice(2));
+    _itemData[key] = item;
+    return key;
+  }
+
+  function getItem(key) {
+    return _itemData[key] || null;
+  }
+
+  // Toast notification system
+  function showToast(message, type) {
+    var toastEl = document.getElementById('appToast');
+    var bodyEl = document.getElementById('toastBody');
+    if (!toastEl || !bodyEl) return;
+    bodyEl.textContent = message;
+    toastEl.className = 'toast align-items-center border-0 toast-' + (type || 'info');
+    var toast = bootstrap.Toast.getOrCreateInstance(toastEl, { delay: 3000 });
+    toast.show();
+  }
+
+  // =============================================================================
+  // 状態管理
+  // =============================================================================
+
+  var currentDate = new Date();
+  var currentData = {};
+  var staffList = [];
+  var modal = null;
+  var fp = null; // Flatpickr instance
+  var currentUser = '';
+  var dateCache = {}; // 日付別キャッシュ { "2026-04-04": dataObj, ... }
+
+  var CONFIG = {
+    ROOMS: ['選択1', '選択2', '選択3', '選択4', 'PC室', '会議室', '視聴覚室'],
+    PERIODS: ['1限', '2限', '3限', '4限', '昼', '5限', '6限', '放課後'],
+    DAYS_OF_WEEK: ['日', '月', '火', '水', '木', '金', '土'],
+    SCHEDULE_TYPES: ['通常校時', '短縮校時', '変則校時', '考査校時', '特別校時'],
+    ANNOUNCE_TARGETS: ['全職員', 'クラス担任', '分掌主任', '１年部職員', '２年部職員', '３年部職員', '生徒（全校）', '生徒（１年）', '生徒（２年）', '生徒（３年）'],
+    LEAVE_TYPES: ['年休', '振休', '夏季休暇', '職専免', 'その他'],
+    PERIOD_ORDER: { '1限': 1, '2限': 2, '3限': 3, '4限': 4, '昼': 5, '昼休み': 5, '5限': 6, '6限': 7, '7限': 8, '放課後': 9 }
+  };
+
+  // =============================================================================
+  // 初期化
+  // =============================================================================
+
+  window.onload = function() {
+    try {
+      var modalEl = document.getElementById('entryModal');
+      if (modalEl && typeof bootstrap !== 'undefined') {
+        modal = new bootstrap.Modal(modalEl);
+      }
+    } catch (e) {
+      console.error('Modal init error:', e);
+    }
+
+    // Flatpickr初期化
+    try {
+      fp = flatpickr('#datePicker', {
+        locale: 'ja',
+        dateFormat: 'Y-m-d',
+        altInput: true,
+        altFormat: 'Y/n/j (D)',
+        defaultDate: new Date(),
+        disableMobile: true,
+        onChange: function(selectedDates) {
+          if (selectedDates.length > 0) {
+            currentDate = selectedDates[0];
+            loadData();
+          }
+        }
+      });
+    } catch (e) {
+      console.error('Flatpickr init error:', e);
+      // フォールバック: ネイティブdate inputに切り替え
+      var dpEl = document.getElementById('datePicker');
+      if (dpEl) {
+        dpEl.type = 'date';
+        dpEl.removeAttribute('readonly');
+        dpEl.addEventListener('change', function() {
+          currentDate = new Date(dpEl.value + 'T00:00:00');
+          loadData();
+        });
+      }
+    }
+
+    // バックグラウンド復帰時にデータ自動更新（iPad対策、60秒クールダウン）
+    var lastVisibilityLoad = 0;
+    document.addEventListener('visibilitychange', function() {
+      if (!document.hidden && (Date.now() - lastVisibilityLoad > 60000)) {
+        lastVisibilityLoad = Date.now();
+        clearCache();
+        loadData();
+      }
+    });
+
+    setToday();
+  };
+
+  // =============================================================================
+  // データ操作
+  // =============================================================================
+
+  var _loadRequestId = 0; // レースコンディション対策
+
+  function loadData(forceReload) {
+    showLoading(true);
+
+    var requestedDate = formatDateStr(currentDate);
+
+    // 日付別キャッシュチェック
+    if (!forceReload && dateCache[requestedDate]) {
+      try {
+        renderData(dateCache[requestedDate]);
+      } catch (e) {
+        console.error('renderData error:', e);
+      }
+      showLoading(false);
+      return;
+    }
+
+    // リクエストIDで最新リクエストのみ採用
+    var myRequestId = ++_loadRequestId;
+    var myDate = requestedDate;
+
+    google.script.run
+      .withSuccessHandler(function(json) { onDataLoaded(json, myRequestId, myDate); })
+      .withFailureHandler(onFailure)
+      .getData(requestedDate);
+  }
+
+  function onDataLoaded(json, requestId, requestDate) {
+    // 古いリクエストのレスポンスは無視
+    if (requestId !== _loadRequestId) return;
+
+    try {
+      var data = JSON.parse(json);
+
+      // リクエスト時の日付でキャッシュ保存（currentDateではなくrequestDate）
+      dateCache[requestDate] = data;
+
+      // キャッシュサイズ制限（最大15日分）
+      var keys = Object.keys(dateCache);
+      if (keys.length > 15) {
+        delete dateCache[keys[0]];
+      }
+
+      renderData(data);
+    } catch (e) {
+      console.error('onDataLoaded error:', e);
+      showToast('データの表示に失敗しました', 'error');
+    } finally {
+      showLoading(false);
+    }
+  }
+
+  function renderData(data) {
+    currentData = data;
+    staffList = data.staff;
+    currentUser = data.currentUser || '';
+
+    _itemData = {};
+
+    updateHeader(currentDate, data.today.daily.length, 'headerTodayInfo', data.today);
+    var tmr = new Date(currentDate);
+    tmr.setDate(tmr.getDate() + 1);
+    updateHeader(tmr, data.tomorrow.daily.length, 'headerTomorrowInfo', data.tomorrow);
+
+    renderDailyList(data.today.daily, 'dailyList');
+    renderDailyList(data.tomorrow.daily, 'dailyListTomorrow');
+    renderMeetings(data.today.meetings, 'meetingListMain');
+    document.getElementById('headerMeetingInfo').textContent = data.today.counts.meeting + '件';
+    renderSimpleList('tripList', data.today.trips, 'trip', 'headerTripInfo');
+    renderSimpleList('leaveList', data.today.leaves, 'leave', 'headerLeaveInfo');
+    renderAnnouncements('announceStaffList', data.today.announcements_staff);
+    renderAnnouncements('announceStudentList', data.today.announcements_student);
+    renderTaskList(data.tasks);
+    renderReportList(data.today.reports || []);
+    renderRoomMatrix(data.today.reservations);
+
+    setTimeout(loadWeather, 100);
+
+    // 日誌ビューが表示中なら更新
+    if (diaryVisible) renderDiary();
+  }
+
+  function clearCache() {
+    dateCache = {};
+  }
+
+  function onFailure(e) {
+    showToast('エラー: ' + e.message, 'error');
+    showLoading(false);
+  }
+
+  // =============================================================================
+  // 日付操作
+  // =============================================================================
+
+  function setToday() {
+    currentDate = new Date();
+    updateDatePicker();
+    loadData();
+  }
+
+  function changeDate(d) {
+    currentDate.setDate(currentDate.getDate() + d);
+    updateDatePicker();
+    loadData();
+  }
+
+  function updateDatePicker() {
+    if (fp) {
+      fp.setDate(currentDate, false);
+    } else {
+      var dpEl = document.getElementById('datePicker');
+      if (dpEl) dpEl.value = formatDateStr(currentDate);
+    }
+  }
+
+  // =============================================================================
+  // ヘッダー更新
+  // =============================================================================
+
+  function updateHeader(d, c, id, dayData) {
+    var el = document.getElementById(id);
+    if (!el) return;
+
+    var day = CONFIG.DAYS_OF_WEEK[d.getDay()];
+    var html = '<div>' + d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate() + ' (' + day + ')　' + c + '件</div>';
+
+    if (dayData && dayData.main_event) {
+      var evt = dayData.main_event;
+      var line = '';
+      if (evt.content) line += '<span class="badge bg-primary me-1">' + escapeHtml(evt.content) + '</span>';
+
+      var schClass = evt.scheduleType === '通常校時' ? 'badge bg-outline-secondary text-dark border me-1' : 'badge bg-secondary me-1';
+      line += '<span class="' + schClass + '">' + escapeHtml(evt.scheduleType) + '</span>';
+
+      var clnClass = evt.cleaningStatus === '通常清掃' ? 'badge bg-outline-info text-dark border me-1' : 'badge bg-info text-dark me-1';
+      line += '<span class="' + clnClass + '">' + escapeHtml(evt.cleaningStatus) + '</span>';
+
+      html += '<div class="mt-1" style="cursor:pointer;" onclick="openScheduleSettings()">' + line + '</div>';
+    }
+
+    el.innerHTML = html;
+  }
+
+  // =============================================================================
+  // レンダリング関数（XSS-safe: data-lookup pattern）
+  // =============================================================================
+
+  function renderDailyList(items, id) {
+    var list = document.getElementById(id);
+    if (!items.length) {
+      list.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">予定なし</td></tr>';
+      return;
+    }
+
+    items.sort(function(a, b) { return (a.order - b.order) || (a.time || '').localeCompare(b.time || ''); });
+
+    var parts = [];
+    for (var i = 0; i < items.length; i++) {
+      var d = items[i];
+      var key = storeItem(d);
+      var upBtn = i === 0 ? '' : '<button class="btn btn-sm text-secondary p-0" onclick="moveItem(\'daily\', \'' + escapeHtml(String(d.id)) + '\', -1)" aria-label="上に移動"><i class="bi bi-arrow-up-short"></i></button>';
+      var downBtn = i === items.length - 1 ? '' : '<button class="btn btn-sm text-secondary p-0" onclick="moveItem(\'daily\', \'' + escapeHtml(String(d.id)) + '\', 1)" aria-label="下に移動"><i class="bi bi-arrow-down-short"></i></button>';
+
+      parts.push(
+        '<tr style="cursor:pointer;" onclick="showDailyDetail(\'' + key + '\')">' +
+          '<td class="col-order">' + upBtn + downBtn + '</td>' +
+          '<td class="col-time">' + (d.time ? escapeHtml(d.time) : '<span class="text-muted">-</span>') + '</td>' +
+          '<td>' + escapeHtml(d.content) +
+            (d.end_date && d.end_date !== d.date ? '<br><small class="text-info"><i class="bi bi-calendar-range me-1"></i>' + escapeHtml(d.date) + ' 〜 ' + escapeHtml(d.end_date) + '</small>' : '') +
+            (d.note ? '<br><small class="text-muted">' + escapeHtml(d.note) + '</small>' : '') + '</td>' +
+          '<td class="col-actions" onclick="event.stopPropagation()">' +
+            '<button class="btn btn-sm text-primary p-1" onclick="openEditModal(\'daily\', \'' + key + '\')" aria-label="編集"><i class="bi bi-pencil-square"></i></button>' +
+            '<button class="btn btn-sm text-danger p-1" onclick="deleteItem(\'' + escapeHtml(String(d.id)) + '\',\'daily\',\'' + escapeHtml(d.content) + '\')" aria-label="削除"><i class="bi bi-trash"></i></button>' +
+          '</td>' +
+        '</tr>'
+      );
+    }
+    list.innerHTML = parts.join('');
+  }
+
+  function renderMeetings(items, id) {
+    var list = document.getElementById(id);
+    if (!items.length) {
+      list.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">予定なし</td></tr>';
+      return;
+    }
+
+    items.sort(function(a, b) {
+      var orderA = CONFIG.PERIOD_ORDER[a.time] || 999;
+      var orderB = CONFIG.PERIOD_ORDER[b.time] || 999;
+      if (orderA !== orderB) return orderA - orderB;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+
+    var parts = [];
+    items.forEach(function(m) {
+      var key = storeItem(m);
+      var rowClass = m.is_fixed ? 'table-light text-muted' : '';
+      var nameHtml = m.is_fixed ? '<i class="bi bi-arrow-repeat me-1"></i>' + escapeHtml(m.name) : escapeHtml(m.name);
+
+      var actions = '';
+      if (!m.is_fixed) {
+        actions =
+            '<button class="btn btn-sm text-primary p-1" onclick="openEditModal(\'meeting\', \'' + key + '\')" aria-label="編集"><i class="bi bi-pencil-square"></i></button>' +
+            '<button class="btn btn-sm text-danger p-1" onclick="deleteItem(\'' + escapeHtml(String(m.id)) + '\',\'meeting\',\'' + escapeHtml(m.name) + '\')" aria-label="削除"><i class="bi bi-trash"></i></button>';
+      }
+
+      parts.push(
+        '<tr class="' + rowClass + '">' +
+          '<td>' + nameHtml + '</td>' +
+          '<td class="col-badge">' + escapeHtml(m.time) + '</td>' +
+          '<td>' + escapeHtml(m.place) + '</td>' +
+          '<td class="col-actions">' + actions + '</td>' +
+        '</tr>'
+      );
+    });
+    list.innerHTML = parts.join('');
+  }
+
+  function renderSimpleList(id, items, cat, headerId) {
+    var el = document.getElementById(headerId);
+    if (el) el.textContent = items.length + '件';
+
+    var list = document.getElementById(id);
+    if (!items.length) {
+      list.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">予定なし</td></tr>';
+      return;
+    }
+
+    var parts = [];
+    items.forEach(function(item) {
+      var key = storeItem(item);
+
+      if (cat === 'trip') {
+        var tripPeriod = (item.end_date && item.end_date !== item.date) ? '<br><small class="text-info"><i class="bi bi-calendar-range me-1"></i>' + escapeHtml(item.date) + ' 〜 ' + escapeHtml(item.end_date) + '</small>' : '';
+        parts.push(
+          '<tr>' +
+            '<td class="col-name">' + escapeHtml(item.staff_name) + '</td>' +
+            '<td class="col-badge">' + escapeHtml(item.time) + '</td>' +
+            '<td>' + escapeHtml(item.location) + '<br><small class="text-muted">' + escapeHtml(item.purpose) + '</small>' +
+              tripPeriod +
+              (item.note ? '<br><small class="text-muted"><i class="bi bi-chat-left-text me-1"></i>' + escapeHtml(item.note) + '</small>' : '') + '</td>' +
+            '<td class="col-actions">' +
+              '<button class="btn btn-sm text-primary p-1" onclick="openEditModal(\'trip\', \'' + key + '\')" aria-label="編集"><i class="bi bi-pencil-square"></i></button>' +
+              '<button class="btn btn-sm text-danger p-1" onclick="deleteItem(\'' + escapeHtml(String(item.id)) + '\',\'trip\',\'' + escapeHtml(item.staff_name) + '\')" aria-label="削除"><i class="bi bi-trash"></i></button>' +
+            '</td>' +
+          '</tr>'
+        );
+      } else {
+        parts.push(
+          '<tr>' +
+            '<td class="col-name">' + escapeHtml(item.staff_name) + '</td>' +
+            '<td class="col-badge">' + escapeHtml(item.type) + '</td>' +
+            '<td>' + escapeHtml(item.time) +
+              (item.note ? '<br><small class="text-muted"><i class="bi bi-chat-left-text me-1"></i>' + escapeHtml(item.note) + '</small>' : '') + '</td>' +
+            '<td class="col-actions">' +
+              '<button class="btn btn-sm text-primary p-1" onclick="openEditModal(\'leave\', \'' + key + '\')" aria-label="編集"><i class="bi bi-pencil-square"></i></button>' +
+              '<button class="btn btn-sm text-danger p-1" onclick="deleteItem(\'' + escapeHtml(String(item.id)) + '\',\'leave\',\'' + escapeHtml(item.staff_name) + '\')" aria-label="削除"><i class="bi bi-trash"></i></button>' +
+            '</td>' +
+          '</tr>'
+        );
+      }
+    });
+    list.innerHTML = parts.join('');
+  }
+
+  function renderAnnouncements(id, items) {
+    var list = document.getElementById(id);
+    if (!items.length) {
+      list.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">なし</td></tr>';
+      return;
+    }
+
+    items.sort(function(a, b) { return a.order - b.order; });
+
+    var parts = [];
+    for (var i = 0; i < items.length; i++) {
+      var a = items[i];
+      var key = storeItem(a);
+      var prio = a.priority === '◎' ? '<span class="text-danger fw-bold">【重要】</span>' : '';
+      var upBtn = i === 0 ? '' : '<button class="btn btn-sm text-secondary p-0" onclick="moveItem(\'announce\', \'' + escapeHtml(String(a.id)) + '\', -1)" aria-label="上に移動"><i class="bi bi-arrow-up-short"></i></button>';
+      var downBtn = i === items.length - 1 ? '' : '<button class="btn btn-sm text-secondary p-0" onclick="moveItem(\'announce\', \'' + escapeHtml(String(a.id)) + '\', 1)" aria-label="下に移動"><i class="bi bi-arrow-down-short"></i></button>';
+
+      parts.push(
+        '<tr>' +
+          '<td class="col-order">' + upBtn + downBtn + '</td>' +
+          '<td class="col-badge"><span class="badge bg-light text-dark border">' + escapeHtml(a.target) + '</span></td>' +
+          '<td>' + prio + escapeHtml(a.content) + '</td>' +
+          '<td class="col-name">' + escapeHtml(a.reporter) + '</td>' +
+          '<td class="col-actions">' +
+            '<button class="btn btn-sm text-primary p-1" onclick="openEditModal(\'announce\', \'' + key + '\')" aria-label="編集"><i class="bi bi-pencil-square"></i></button>' +
+            '<button class="btn btn-sm text-danger p-1" onclick="deleteItem(\'' + escapeHtml(String(a.id)) + '\',\'announce\',\'伝達事項\')" aria-label="削除"><i class="bi bi-trash"></i></button>' +
+          '</td>' +
+        '</tr>'
+      );
+    }
+    list.innerHTML = parts.join('');
+  }
+
+  function renderTaskList(tasks) {
+    var list = document.getElementById('taskList');
+    var filtered = currentUser ? tasks.filter(function(t) { return t.name === currentUser; }) : tasks;
+    var el = document.getElementById('headerTaskInfo');
+    if (el) el.textContent = filtered.length + '件' + (currentUser ? ' (' + currentUser + ')' : '');
+
+    if (!filtered.length) {
+      list.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">タスクなし</td></tr>';
+      return;
+    }
+
+    var parts = [];
+    filtered.forEach(function(t) {
+      var key = storeItem(t);
+      var statusVal = parseInt(t.check);
+      if (isNaN(statusVal)) statusVal = (t.check === true || t.check === 'TRUE') ? 2 : 0;
+
+      var iconClass = 'bi-circle text-muted';
+      var statusLabel = '未着手';
+      if (statusVal === 1) { iconClass = 'bi-play-circle-fill text-warning'; statusLabel = '着手中'; }
+      else if (statusVal === 2) { iconClass = 'bi-check-circle-fill text-success'; statusLabel = '完了'; }
+
+      var contentClass = statusVal === 2 ? 'text-decoration-line-through opacity-50' : '';
+      var detailBtn = t.detail ? ' <span class="text-primary" style="cursor:pointer;" onclick="showTaskDetail(\'' + key + '\')" aria-label="詳細を表示"><i class="bi bi-info-circle"></i></span>' : '';
+
+      // 期限切れ判定（未完了 & 期限あり & 期限超過）
+      var isOverdue = statusVal !== 2 && t.due_date && t.due_date < formatDateStr(new Date());
+      var dueDateClass = isOverdue ? 'text-danger fw-bold' : '';
+      var rowClass = isOverdue ? 'table-warning' : '';
+
+      parts.push(
+        '<tr class="' + rowClass + '">' +
+          '<td class="col-status"><i class="bi ' + iconClass + ' fs-5 task-check" onclick="cycleTaskStatus(\'' + escapeHtml(String(t.id)) + '\', ' + statusVal + ')" role="button" aria-label="ステータス変更: ' + statusLabel + '"></i></td>' +
+          '<td class="' + contentClass + '">' + escapeHtml(t.content) + detailBtn + '</td>' +
+          '<td class="col-name">' + escapeHtml(t.name) + '</td>' +
+          '<td class="col-badge ' + dueDateClass + '">' + escapeHtml(t.due_date) + (isOverdue ? ' <i class="bi bi-exclamation-triangle-fill"></i>' : '') + '</td>' +
+          '<td class="col-actions">' +
+            '<button class="btn btn-sm text-primary p-1" onclick="openEditModal(\'task\', \'' + key + '\')" aria-label="編集"><i class="bi bi-pencil-square"></i></button>' +
+            '<button class="btn btn-sm text-danger p-1" onclick="deleteItem(\'' + escapeHtml(String(t.id)) + '\',\'task\',\'' + escapeHtml(t.content) + '\')" aria-label="削除"><i class="bi bi-trash"></i></button>' +
+          '</td>' +
+        '</tr>'
+      );
+    });
+    list.innerHTML = parts.join('');
+  }
+
+  function renderReportList(items) {
+    var el = document.getElementById('headerReportInfo');
+    if (el) el.textContent = items.length + '件';
+
+    var list = document.getElementById('reportList');
+    if (!items.length) {
+      list.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">報告なし</td></tr>';
+      return;
+    }
+
+    var parts = [];
+    items.forEach(function(item) {
+      var key = storeItem(item);
+      parts.push(
+        '<tr>' +
+          '<td class="col-badge"><span class="badge bg-warning text-dark">' + escapeHtml(item.category) + '</span></td>' +
+          '<td class="col-name">' + escapeHtml(item.reporter) + '</td>' +
+          '<td>' + escapeHtml(item.content) + '</td>' +
+          '<td class="col-actions">' +
+            '<button class="btn btn-sm text-primary p-1" onclick="openEditModal(\'report\', \'' + key + '\')" aria-label="編集"><i class="bi bi-pencil-square"></i></button>' +
+            '<button class="btn btn-sm text-danger p-1" onclick="deleteItem(\'' + escapeHtml(String(item.id)) + '\',\'report\',\'' + escapeHtml(item.content) + '\')" aria-label="削除"><i class="bi bi-trash"></i></button>' +
+          '</td>' +
+        '</tr>'
+      );
+    });
+    list.innerHTML = parts.join('');
+  }
+
+  function renderRoomMatrix(reservations) {
+    var tbody = document.querySelector('#roomTable tbody');
+    var thead = document.querySelector('#roomTable thead');
+
+    var headParts = ['<tr><th class="bg-light"></th>'];
+    CONFIG.PERIODS.forEach(function(p) { headParts.push('<th>' + p + '</th>'); });
+    headParts.push('</tr>');
+    thead.innerHTML = headParts.join('');
+
+    var bodyParts = [];
+    CONFIG.ROOMS.forEach(function(room) {
+      bodyParts.push('<tr><th>' + room + '</th>');
+      CONFIG.PERIODS.forEach(function(period) {
+        var nr = reservations.find(function(r) { return r.room === room && r.period === period && !r.is_fixed; });
+        var fr = reservations.find(function(r) { return r.room === room && r.period === period && r.is_fixed; });
+
+        if (nr) {
+          var key = storeItem(nr);
+          var content = nr.content === '中止' ? '<span class="cell-cancelled">中止</span>' : escapeHtml(nr.content);
+          bodyParts.push('<td class="cell-occupied" onclick="openEditModal(\'room\', \'' + key + '\')"><div>' + content + '</div><div class="small">' + escapeHtml(nr.reserver) + '</div></td>');
+        } else if (fr) {
+          bodyParts.push('<td class="cell-fixed" onclick="openFixedRoomModal(\'' + room + '\',\'' + period + '\',\'' + escapeHtml(fr.content) + '\',\'' + escapeHtml(fr.reserver) + '\')"><div>' + escapeHtml(fr.content) + '</div></td>');
+        } else {
+          bodyParts.push('<td onclick="openRoomModal(\'' + room + '\',\'' + period + '\')"></td>');
+        }
+      });
+      bodyParts.push('</tr>');
+    });
+    tbody.innerHTML = bodyParts.join('');
+  }
+
+  // =============================================================================
+  // 詳細モーダル（data-lookup）
+  // =============================================================================
+
+  function showDailyDetail(key) {
+    var d = getItem(key);
+    if (!d) return;
+    var m = bootstrap.Modal.getOrCreateInstance(document.getElementById('infoModal'));
+    document.getElementById('infoModalTitle').textContent = '行事詳細';
+    document.getElementById('infoModalBody').innerHTML =
+      '<div class="mb-2"><strong>日付:</strong> ' + escapeHtml(d.date) + (d.end_date && d.end_date !== d.date ? ' 〜 ' + escapeHtml(d.end_date) : '') + '</div>' +
+      '<div class="mb-2"><strong>時間:</strong> ' + escapeHtml(d.time) + '</div>' +
+      '<div class="mb-2"><strong>内容:</strong> ' + escapeHtml(d.content) + '</div>' +
+      '<div class="mb-2"><strong>備考:</strong> ' + escapeHtml(d.note) + '</div>';
+    m.show();
+  }
+
+  function showTaskDetail(key) {
+    var t = getItem(key);
+    if (!t) return;
+    var m = bootstrap.Modal.getOrCreateInstance(document.getElementById('infoModal'));
+    var statusText = (t.check === true || t.check === 'TRUE' || t.check == 2) ? '完了' : (t.check == 1 ? '着手中' : '未着手');
+    document.getElementById('infoModalTitle').textContent = 'タスク詳細';
+    document.getElementById('infoModalBody').innerHTML =
+      '<div class="mb-2"><strong>内容:</strong> ' + escapeHtml(t.content) + '</div>' +
+      '<div class="mb-2"><strong>担当者:</strong> ' + escapeHtml(t.name) + '</div>' +
+      '<div class="mb-2"><strong>期限:</strong> ' + escapeHtml(t.due_date) + '</div>' +
+      '<div class="mb-2"><strong>ステータス:</strong> ' + statusText + '</div>' +
+      '<hr><div><strong>詳細:</strong><br><pre class="text-wrap">' + escapeHtml(t.detail) + '</pre></div>';
+    m.show();
+  }
+
+  // =============================================================================
+  // アクション関数
+  // =============================================================================
+
+  var _taskToggling = false;
+
+  function cycleTaskStatus(id, currentStatus) {
+    if (_taskToggling) return;
+    _taskToggling = true;
+    toggleTask(id, (currentStatus + 1) % 3);
+  }
+
+  function toggleTask(id, checked) {
+    showLoading(true);
+    google.script.run.withSuccessHandler(function() {
+      _taskToggling = false;
+      clearCache(); loadData(); showToast('ステータスを更新しました', 'success');
+    }).withFailureHandler(function(e) {
+      _taskToggling = false;
+      onFailure(e);
+    }).toggleTaskCheck(id, checked);
+  }
+
+  function deleteItem(id, cat, name) {
+    if (!confirm('「' + name + '」を削除しますか？')) return;
+    if (modal) modal.hide();
+    showLoading(true);
+    google.script.run.withSuccessHandler(function() { clearCache(); loadData(); showToast('削除しました', 'success'); }).withFailureHandler(onFailure).deleteEvent(id, cat);
+  }
+
+  function moveItem(cat, id, dir) {
+    var date = formatDateStr(currentDate);
+    showLoading(true);
+    google.script.run.withSuccessHandler(function() { clearCache(); loadData(); showToast('順序を変更しました', 'success'); }).withFailureHandler(onFailure).moveItem(cat, id, dir, date);
+  }
+
+  // =============================================================================
+  // 天気
+  // =============================================================================
+
+  function loadWeather() {
+    var cached = localStorage.getItem('weather_cache');
+    var cacheTime = localStorage.getItem('weather_cache_time');
+    var now = Date.now();
+    var cacheValid = cached && cacheTime && (now - parseInt(cacheTime)) < 30 * 60 * 1000;
+
+    if (cacheValid) {
+      try { renderWeather(JSON.parse(cached)); } catch (e) { /* fall through */ }
+      return;
+    }
+
+    google.script.run.withSuccessHandler(function(j) {
+      try {
+        var d = JSON.parse(j);
+        renderWeather(d);
+        localStorage.setItem('weather_cache', j);
+        localStorage.setItem('weather_cache_time', Date.now().toString());
+      } catch (e) { /* ignore */ }
+    }).getWeatherData();
+  }
+
+  function getWeatherIcon(code) {
+    if (code === 0) return 'bi-sun-fill text-warning';
+    if (code <= 3) return 'bi-cloud-sun-fill text-secondary';
+    if (code <= 48) return 'bi-cloud-fog-fill text-secondary';
+    if (code <= 67) return 'bi-cloud-rain-fill text-primary';
+    if (code <= 77) return 'bi-snow2 text-info';
+    if (code <= 82) return 'bi-cloud-rain-heavy-fill text-primary';
+    if (code <= 86) return 'bi-snow text-info';
+    return 'bi-cloud-lightning-rain-fill text-danger';
+  }
+
+  function renderWeather(d) {
+    if (!d || !d.current || typeof d.current.temperature_2m !== 'number') return;
+    var icon = getWeatherIcon(d.current.weather_code || 0);
+    document.getElementById('weatherInfo').innerHTML =
+      '<i class="bi ' + icon + ' fs-4 me-1"></i><span class="fw-bold">' + Math.round(d.current.temperature_2m) + '°C</span>';
+  }
+
+  // =============================================================================
+  // モーダルフォーム - エントリーポイント（data-lookup対応）
+  // =============================================================================
+
+  var TITLE_MAP = { daily: '行事', meeting: '会議', trip: '出張', leave: '休暇', announce: '伝達事項', task: 'タスク', room: '教室予約', report: '報告', schedule_settings: '本日の設定' };
+
+  function openModal(cat, typeArg) {
+    setupModalForm(cat, typeArg, null);
+    if (modal) modal.show(); else showToast('Modal機能は現在使用できません', 'error');
+  }
+
+  function openModalForTomorrow(cat, typeArg) {
+    var tomorrow = new Date(currentDate);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setupModalForm(cat, typeArg, null, formatDateStr(tomorrow));
+    if (modal) modal.show(); else showToast('Modal機能は現在使用できません', 'error');
+  }
+
+  // openEditModal now accepts key (string) instead of data object
+  function openEditModal(cat, key) {
+    var data = getItem(key);
+    if (!data) return;
+    setupModalForm(cat, data.type || '', data);
+    if (modal) modal.show();
+  }
+
+  function openRoomModal(room, period) {
+    var key = storeItem({ room: room, period: period, content: '', reserver: '' });
+    openEditModal('room', key);
+  }
+
+  function openFixedRoomModal(room, period, org, owner) {
+    var safeOrg = escapeHtml(org);
+    var safeOwner = escapeHtml(owner);
+    document.getElementById('entryCategory').value = 'room';
+    document.getElementById('entryId').value = '';
+    var day = CONFIG.DAYS_OF_WEEK[currentDate.getDay()];
+    document.getElementById('modalTitle').innerText = '教室変更 (' + (currentDate.getMonth() + 1) + '/' + currentDate.getDate() + ' ' + day + ')';
+    var staffOpts = buildStaffOptions();
+    document.getElementById('formContent').innerHTML =
+      '<div class="alert alert-secondary mb-3"><small>通常: ' + safeOrg + ' (' + safeOwner + ')</small></div>' +
+      '<input type="hidden" id="inputRoom" value="' + escapeHtml(room) + '">' +
+      '<input type="hidden" id="inputPeriod" value="' + escapeHtml(period) + '">' +
+      '<div class="mb-3"><label for="inputContent">変更内容</label><div class="input-group"><input type="text" id="inputContent" class="form-control" value="' + safeOrg + '">' +
+      '<button type="button" class="btn btn-outline-danger" onclick="document.getElementById(\'inputContent\').value=\'中止\'">中止</button></div></div>' +
+      '<div class="mb-3"><label for="inputReserver">変更予約者</label><select id="inputReserver" class="form-select">' + staffOpts + '</select></div>';
+    if (modal) modal.show();
+  }
+
+  function openScheduleSettings() {
+    var curType = '', curClean = '', curMain = '';
+    if (currentData && currentData.today && currentData.today.main_event) {
+      var evt = currentData.today.main_event;
+      curType = evt.scheduleType;
+      curClean = evt.cleaningStatus;
+      curMain = evt.content;
+    }
+
+    document.getElementById('entryCategory').value = 'schedule_settings';
+    document.getElementById('entryId').value = '';
+    var day = CONFIG.DAYS_OF_WEEK[currentDate.getDay()];
+    document.getElementById('modalTitle').innerText = '予定設定 (' + (currentDate.getMonth() + 1) + '/' + currentDate.getDate() + ' ' + day + ')';
+
+    var typeOpts = CONFIG.SCHEDULE_TYPES.map(function(t) { return '<option value="' + t + '">' + t + '</option>'; }).join('');
+
+    document.getElementById('formContent').innerHTML =
+      '<div class="mb-3"><label for="inputScheduleType" class="form-label">校時</label>' +
+        '<select id="inputScheduleType" class="form-control"><option value="">(指定なし)</option>' + typeOpts + '</select></div>' +
+      '<div class="mb-3"><label for="inputCleaning" class="form-label">清掃</label>' +
+        '<input type="text" id="inputCleaning" class="form-control" placeholder="例: 清掃カット" list="cleaningList">' +
+        '<datalist id="cleaningList"><option value="通常清掃"><option value="清掃カット"><option value="大掃除"></datalist></div>' +
+      '<div class="mb-3"><label for="inputMainEvent" class="form-label">メインイベント</label>' +
+        '<input type="text" id="inputMainEvent" class="form-control" placeholder="例: 体育祭"></div>';
+
+    if (modal) modal.show();
+
+    setTimeout(function() {
+      document.getElementById('inputScheduleType').value = curType || '通常校時';
+      document.getElementById('inputCleaning').value = curClean || '通常清掃';
+      document.getElementById('inputMainEvent').value = curMain || '';
+    }, 0);
+  }
+
+  // =============================================================================
+  // モーダルフォーム - セットアップ
+  // =============================================================================
+
+  function buildStaffOptions() {
+    return '<option value="">選択</option>' + staffList.map(function(s) { return '<option value="' + escapeHtml(s.name) + '">' + escapeHtml(s.name) + '</option>'; }).join('');
+  }
+
+  function setupModalForm(cat, typeArg, data, customDate) {
+    document.getElementById('entryCategory').value = cat;
+    document.getElementById('entryId').value = data ? data.id : '';
+    document.getElementById('announceType').value = typeArg || '';
+    var day = CONFIG.DAYS_OF_WEEK[currentDate.getDay()];
+    var dateLabel = (cat !== 'task') ? ' (' + (currentDate.getMonth() + 1) + '/' + currentDate.getDate() + ' ' + day + ')' : '';
+    document.getElementById('modalTitle').innerText = (data ? '編集: ' : '登録: ') + TITLE_MAP[cat] + dateLabel;
+
+    var val = function(key) { return data ? escapeHtml(data[key] || '') : ''; };
+    var html = '';
+
+    switch (cat) {
+      case 'task':     html = buildTaskForm(data, val); break;
+      case 'daily':
+      case 'meeting':  html = buildDailyMeetingForm(cat, data, val, customDate); break;
+      case 'trip':
+      case 'leave':    html = buildTripLeaveForm(cat, data, val); break;
+      case 'announce': html = buildAnnounceForm(data, val, typeArg); break;
+      case 'room':     html = buildRoomForm(data, val); break;
+      case 'report':   html = buildReportForm(data, val); break;
+    }
+
+    document.getElementById('formContent').innerHTML = html;
+  }
+
+  function buildTaskForm(data, val) {
+    if (data) {
+      return '<input type="hidden" id="inputTaskName" value="' + val('name') + '">' +
+        '<input type="hidden" id="inputTaskRoll" value="' + val('roll') + '">' +
+        '<input type="hidden" id="inputTaskCheck" value="' + (data.check != null ? data.check : 0) + '">' +
+        '<div class="mb-3"><label class="form-label">担当者</label><input type="text" class="form-control" value="' + val('name') + '" disabled></div>' +
+        '<div class="mb-3"><label for="inputContent" class="form-label">タスク内容</label><input type="text" id="inputContent" class="form-control" value="' + val('content') + '"></div>' +
+        '<div class="mb-3"><label for="inputDueDate" class="form-label">期限</label><input type="date" id="inputDueDate" class="form-control" value="' + val('due_date') + '"></div>' +
+        '<div class="mb-3"><label for="inputDetail" class="form-label">詳細</label><textarea id="inputDetail" class="form-control" rows="3">' + val('detail') + '</textarea></div>';
+    }
+
+    setTimeout(function() {
+      updateTaskUserList();
+      // タブ切替時にtaskTargetTypeを更新（onclick使用でリスナー重複なし）
+      var othersTab = document.getElementById('others-tab');
+      var selfTab = document.getElementById('self-tab');
+      if (othersTab) othersTab.onclick = function() { setTimeout(function() { document.getElementById('taskTargetType').value = 'others'; }, 50); };
+      if (selfTab) selfTab.onclick = function() { setTimeout(function() { document.getElementById('taskTargetType').value = 'self'; }, 50); };
+    }, 100);
+
+    return '<ul class="nav nav-tabs mb-3" id="taskTab" role="tablist">' +
+      '<li class="nav-item"><button class="nav-link active" id="self-tab" data-bs-toggle="tab" data-bs-target="#self" type="button" role="tab">自分</button></li>' +
+      '<li class="nav-item"><button class="nav-link" id="others-tab" data-bs-toggle="tab" data-bs-target="#others" type="button" role="tab">他人・グループ</button></li>' +
+      '</ul>' +
+      '<div class="tab-content" id="taskTabContent">' +
+        '<div class="tab-pane fade show active" id="self" role="tabpanel">' +
+          '<p class="text-muted small">自分自身のタスクとして登録します。</p>' +
+        '</div>' +
+        '<div class="tab-pane fade" id="others" role="tabpanel">' +
+          '<div class="mb-2"><select class="form-select" id="filterType" onchange="updateTaskUserList()">' +
+            '<option value="all">全員 (名前順)</option><option value="grade">学年で絞り込み</option>' +
+            '<option value="dept">分掌で絞り込み</option><option value="subject">教科で絞り込み</option>' +
+            '<option value="role_type">役割で絞り込み</option><option value="chief_type">主任で絞り込み</option>' +
+          '</select></div>' +
+          '<div class="mb-2" id="subFilterContainer" style="display:none;"><select class="form-select" id="subFilterSelect" onchange="applyTaskUserFilter()"></select></div>' +
+          '<div class="border rounded p-2" style="max-height: 150px; overflow-y: auto;" id="userCheckList"></div>' +
+          '<div class="d-flex justify-content-end mt-1"><button type="button" class="btn btn-xs btn-outline-primary" onclick="toggleAllTaskUsers(true)">全選択</button>' +
+          '<button type="button" class="btn btn-xs btn-outline-secondary ms-1" onclick="toggleAllTaskUsers(false)">全解除</button></div>' +
+        '</div>' +
+      '</div>' +
+      '<input type="hidden" id="taskTargetType" value="self">' +
+      '<hr>' +
+      '<div class="mb-3"><label for="inputContent" class="form-label">タスク内容</label><input type="text" id="inputContent" class="form-control" value=""></div>' +
+      '<div class="mb-3"><label for="inputDueDate" class="form-label">期限</label><input type="date" id="inputDueDate" class="form-control" value=""></div>' +
+      '<div class="mb-3"><label for="inputDetail" class="form-label">詳細</label><textarea id="inputDetail" class="form-control" rows="3"></textarea></div>';
+  }
+
+  function buildDailyMeetingForm(cat, data, val, customDate) {
+    var isDaily = cat === 'daily';
+    var currentVal = val('time');
+    var isRange = currentVal && currentVal.includes(':') && currentVal.includes('〜');
+    var timeMode = isRange ? 'time' : 'period';
+
+    var noneChecked = !currentVal || CONFIG.PERIODS.indexOf(currentVal) === -1;
+    var periodOpts = '<input type="radio" class="btn-check" name="periodSel" id="p_none" value="" ' + (noneChecked ? 'checked' : '') + '>' +
+      '<label class="btn btn-outline-secondary btn-sm" for="p_none">なし</label>' +
+      CONFIG.PERIODS.map(function(p) {
+        return '<input type="radio" class="btn-check" name="periodSel" id="p_' + p + '" value="' + p + '" ' + (currentVal === p ? 'checked' : '') + '>' +
+          '<label class="btn btn-outline-secondary btn-sm" for="p_' + p + '">' + p + '</label>';
+      }).join('');
+
+    var tStart = '', tEnd = '';
+    if (isRange) {
+      var timeParts = currentVal.split('〜');
+      tStart = timeParts[0].trim();
+      tEnd = timeParts[1] ? timeParts[1].trim() : '';
+    }
+
+    var dateInputs = '';
+    if (isDaily) {
+      var pickerVal = customDate || formatDateStr(currentDate);
+      var sDate = (data && data.date) ? data.date.replace(/\//g, '-') : pickerVal;
+      var eDate = (data && data.end_date) ? data.end_date.replace(/\//g, '-') : sDate;
+      dateInputs = '<div class="row mb-3"><div class="col"><label for="inputStartDate">開始日</label><input type="date" id="inputStartDate" class="form-control" value="' + sDate + '"></div>' +
+        '<div class="col"><label for="inputEndDate">終了日</label><input type="date" id="inputEndDate" class="form-control" value="' + eDate + '"></div></div>';
+    }
+
+    var contentLabel = isDaily ? '内容' : '会議名';
+    var inputId = isDaily ? 'inputContent' : 'inputName';
+    var catField = isDaily ? '' : '<div class="mb-3"><label for="inputPlace">場所</label><input type="text" id="inputPlace" class="form-control" value="' + (val('place') || '会議室') + '"></div>';
+
+    return dateInputs +
+      '<div class="mb-3"><label>時間指定</label>' +
+        '<div class="btn-group w-100 mb-2" role="group">' +
+          '<input type="radio" class="btn-check" name="timeMode" id="tm_period" value="period" ' + (timeMode === 'period' ? 'checked' : '') + ' onchange="toggleTimeInput()">' +
+          '<label class="btn btn-outline-primary" for="tm_period">校時</label>' +
+          '<input type="radio" class="btn-check" name="timeMode" id="tm_time" value="time" ' + (timeMode === 'time' ? 'checked' : '') + ' onchange="toggleTimeInput()">' +
+          '<label class="btn btn-outline-primary" for="tm_time">時刻</label>' +
+        '</div>' +
+        '<div id="cg_period" style="' + (timeMode === 'period' ? '' : 'display:none') + '"><div class="d-flex flex-wrap gap-1">' + periodOpts + '</div></div>' +
+        '<div id="cg_time" style="' + (timeMode === 'time' ? '' : 'display:none') + '">' +
+          '<div class="input-group"><input type="time" id="inputTimeStart" class="form-control" value="' + tStart + '">' +
+          '<span class="input-group-text">〜</span><input type="time" id="inputTimeEnd" class="form-control" value="' + tEnd + '"></div></div>' +
+      '</div>' +
+      '<div class="mb-3"><label for="' + inputId + '">' + contentLabel + '</label><input type="text" id="' + inputId + '" class="form-control" value="' + (isDaily ? val('content') : val('name')) + '"></div>' +
+      (isDaily ? '<div class="mb-3"><label for="inputNote">備考</label><input type="text" id="inputNote" class="form-control" value="' + val('note') + '"></div>' : '') +
+      catField;
+  }
+
+  function buildTripLeaveForm(cat, data, val) {
+    var staffOpts = buildStaffOptions();
+    var html = '<div class="mb-3"><label for="inputStaff">職員</label><select id="inputStaff" class="form-select">' + staffOpts + '</select></div>';
+
+    if (cat === 'trip') {
+      var pickerVal = formatDateStr(currentDate);
+      var sDate = (data && data.date) ? (typeof data.date === 'string' ? data.date.replace(/\//g, '-') : data.date) : pickerVal;
+      var eDate = (data && data.end_date) ? (typeof data.end_date === 'string' ? data.end_date.replace(/\//g, '-') : data.end_date) : sDate;
+      html += '<div class="row mb-3"><div class="col"><label for="inputStartDate">開始日</label><input type="date" id="inputStartDate" class="form-control" value="' + sDate + '"></div>' +
+        '<div class="col"><label for="inputEndDate">終了日</label><input type="date" id="inputEndDate" class="form-control" value="' + eDate + '"></div></div>' +
+        '<div class="mb-3"><label for="inputPurpose">用務</label><input type="text" id="inputPurpose" class="form-control" value="' + val('purpose') + '"></div>' +
+        '<div class="mb-3"><label for="inputLocation">場所</label><input type="text" id="inputLocation" class="form-control" value="' + val('location') + '"></div>';
+    } else {
+      var leaveOpts = CONFIG.LEAVE_TYPES.map(function(t) { return '<option value="' + t + '">' + t + '</option>'; }).join('');
+      html += '<div class="mb-3"><label for="inputType">種別</label><select id="inputType" class="form-select">' + leaveOpts + '</select></div>';
+    }
+
+    // 時間: プリセット選択 or 時刻入力
+    var curTime = data ? (data.time || '') : '';
+    var presets = ['終日', '午前', '午後'];
+    var isPreset = presets.indexOf(curTime) !== -1 || curTime === '1日';
+    var isTimeRange = !isPreset && curTime.indexOf('〜') !== -1;
+    var tlMode = isTimeRange ? 'time' : 'preset';
+
+    var tlStart = '', tlEnd = '';
+    if (isTimeRange) {
+      var tlParts = curTime.split('〜');
+      tlStart = tlParts[0].trim();
+      tlEnd = tlParts[1] ? tlParts[1].trim() : '';
+    }
+
+    var presetChecked = isPreset ? (curTime === '1日' ? '終日' : curTime) : '';
+    var presetBtns = presets.map(function(p) {
+      return '<input type="radio" class="btn-check" name="timeSel" id="ts_' + p + '" value="' + p + '" ' + (presetChecked === p ? 'checked' : '') + '>' +
+        '<label class="btn btn-outline-secondary btn-sm" for="ts_' + p + '">' + p + '</label>';
+    }).join('');
+
+    html += '<div class="mb-3"><label>時間</label>' +
+      '<div class="btn-group w-100 mb-2" role="group">' +
+        '<input type="radio" class="btn-check" name="tlMode" id="tlm_preset" value="preset" ' + (tlMode === 'preset' ? 'checked' : '') + ' onchange="toggleTlInput()">' +
+        '<label class="btn btn-outline-primary" for="tlm_preset">選択</label>' +
+        '<input type="radio" class="btn-check" name="tlMode" id="tlm_time" value="time" ' + (tlMode === 'time' ? 'checked' : '') + ' onchange="toggleTlInput()">' +
+        '<label class="btn btn-outline-primary" for="tlm_time">時刻</label>' +
+      '</div>' +
+      '<div id="cg_tlPreset" style="' + (tlMode === 'preset' ? '' : 'display:none') + '"><div class="d-flex flex-wrap gap-1">' + presetBtns + '</div></div>' +
+      '<div id="cg_tlTime" style="' + (tlMode === 'time' ? '' : 'display:none') + '">' +
+        '<div class="input-group"><input type="time" id="inputTlStart" class="form-control" value="' + tlStart + '">' +
+        '<span class="input-group-text">〜</span><input type="time" id="inputTlEnd" class="form-control" value="' + tlEnd + '"></div></div>' +
+    '</div>';
+    html += '<div class="mb-3"><label for="inputNote">備考</label><input type="text" id="inputNote" class="form-control" value="' + val('note') + '" placeholder="任意"></div>';
+
+    setTimeout(function() {
+      if (data) {
+        document.getElementById('inputStaff').value = data.staff_name || data.staff;
+        if (cat === 'leave') document.getElementById('inputType').value = data.type;
+      }
+    }, 0);
+
+    return html;
+  }
+
+  function buildAnnounceForm(data, val, typeArg) {
+    var isPrio = val('priority') === '◎';
+    var targetOpts = CONFIG.ANNOUNCE_TARGETS.map(function(t) { return '<option value="' + t + '">' + t + '</option>'; }).join('');
+    var staffOpts = buildStaffOptions();
+
+    setTimeout(function() {
+      if (data) {
+        document.getElementById('inputReporter').value = data.reporter;
+        document.getElementById('inputTarget').value = data.target;
+      } else {
+        document.getElementById('inputTarget').value = (typeArg && typeArg.includes('生徒')) ? '生徒（全校）' : '全職員';
+      }
+    }, 0);
+
+    return '<div class="mb-3"><label>重要度</label><div class="btn-group w-100">' +
+      '<input type="radio" class="btn-check" name="prio" id="p1" value="・" ' + (!isPrio ? 'checked' : '') + '><label class="btn btn-outline-secondary" for="p1">通常</label>' +
+      '<input type="radio" class="btn-check" name="prio" id="p2" value="◎" ' + (isPrio ? 'checked' : '') + '><label class="btn btn-outline-danger" for="p2">重要</label></div></div>' +
+      '<div class="mb-3"><label for="inputTarget">対象</label><select id="inputTarget" class="form-select">' + targetOpts + '</select></div>' +
+      '<div class="mb-3"><label for="inputContent">内容</label><textarea id="inputContent" class="form-control" rows="3">' + val('content') + '</textarea></div>' +
+      '<div class="mb-3"><label for="inputReporter">報告者</label><select id="inputReporter" class="form-select">' + staffOpts + '</select></div>';
+  }
+
+  function buildRoomForm(data, val) {
+    var staffOpts = buildStaffOptions();
+    setTimeout(function() { if (data) document.getElementById('inputReserver').value = data.reserver; }, 0);
+
+    var deleteBtn = (data && data.id && data.id !== 'fixed')
+      ? '<div class="mb-3"><button type="button" class="btn btn-outline-danger w-100" onclick="deleteItem(\'' + escapeHtml(String(data.id)) + '\',\'room\',\'教室予約\')">この予約を削除</button></div>'
+      : '';
+
+    return '<input type="hidden" id="inputRoom" value="' + val('room') + '">' +
+      '<input type="hidden" id="inputPeriod" value="' + val('period') + '">' +
+      '<div class="mb-3"><strong>' + val('room') + ' - ' + val('period') + '</strong></div>' +
+      '<div class="mb-3"><label for="inputContent">授業・内容</label><input type="text" id="inputContent" class="form-control" value="' + val('content') + '"></div>' +
+      '<div class="mb-3"><label for="inputReserver">予約者</label><select id="inputReserver" class="form-select">' + staffOpts + '</select></div>' +
+      deleteBtn;
+  }
+
+  function buildReportForm(data, val) {
+    var staffOpts = buildStaffOptions();
+    var catOpts = ['部活動', '委員会', '学年', 'その他'].map(function(c) {
+      return '<option value="' + c + '"' + (val('category') === c ? ' selected' : '') + '>' + c + '</option>';
+    }).join('');
+
+    setTimeout(function() {
+      if (data && data.reporter) document.getElementById('inputReporter').value = data.reporter;
+    }, 0);
+
+    return '<div class="mb-3"><label for="inputReportCat">種別</label><select id="inputReportCat" class="form-select">' + catOpts + '</select></div>' +
+      '<div class="mb-3"><label for="inputReporter">報告者</label><select id="inputReporter" class="form-select">' + staffOpts + '</select></div>' +
+      '<div class="mb-3"><label for="inputContent">内容</label><textarea id="inputContent" class="form-control" rows="3">' + val('content') + '</textarea></div>';
+  }
+
+  // =============================================================================
+  // フォーム送信（モーダルはサーバー応答後にclose）
+  // =============================================================================
+
+  function toggleTimeInput() {
+    var mode = document.querySelector('input[name="timeMode"]:checked').value;
+    document.getElementById('cg_period').style.display = mode === 'period' ? 'block' : 'none';
+    document.getElementById('cg_time').style.display = mode === 'time' ? 'block' : 'none';
+  }
+
+  function toggleTlInput() {
+    var mode = document.querySelector('input[name="tlMode"]:checked').value;
+    document.getElementById('cg_tlPreset').style.display = mode === 'preset' ? 'block' : 'none';
+    document.getElementById('cg_tlTime').style.display = mode === 'time' ? 'block' : 'none';
+  }
+
+  function collectTlValue() {
+    var modeEl = document.querySelector('input[name="tlMode"]:checked');
+    if (!modeEl) return '終日';
+    if (modeEl.value === 'preset') {
+      var sel = document.querySelector('input[name="timeSel"]:checked');
+      return sel ? sel.value : '終日';
+    }
+    var s = document.getElementById('inputTlStart').value;
+    var e = document.getElementById('inputTlEnd').value;
+    if (s && e) return s + ' 〜 ' + e;
+    if (s) return s + ' 〜';
+    return '終日';
+  }
+
+  function collectTimeValue() {
+    var modeEl = document.querySelector('input[name="timeMode"]:checked');
+    if (!modeEl) return null;
+    if (modeEl.value === 'period') {
+      var sel = document.querySelector('input[name="periodSel"]:checked');
+      return sel ? sel.value : '';
+    }
+    var s = document.getElementById('inputTimeStart').value;
+    var e = document.getElementById('inputTimeEnd').value;
+    return s ? s + (e ? ' 〜 ' + e : '') : '';
+  }
+
+  function collectFormData(cat, id) {
+    var data = { id: id, date: formatDateStr(currentDate) };
+
+    switch (cat) {
+      case 'task':
+        data.content = document.getElementById('inputContent').value;
+        data.due_date = document.getElementById('inputDueDate').value;
+        data.detail = document.getElementById('inputDetail').value;
+        // 編集時: hidden inputから元データを保持
+        if (id) {
+          var nameEl = document.getElementById('inputTaskName');
+          var rollEl = document.getElementById('inputTaskRoll');
+          var checkEl = document.getElementById('inputTaskCheck');
+          if (nameEl) data.name = nameEl.value;
+          if (rollEl) data.roll = rollEl.value;
+          if (checkEl) { var cv = parseInt(checkEl.value); data.check = (cv >= 0 && cv <= 2) ? cv : 0; }
+        }
+        if (!id) {
+          var targetType = document.getElementById('taskTargetType') ? document.getElementById('taskTargetType').value : 'self';
+          if (targetType === 'self') {
+            if (!currentUser) return null;
+            data.assignees = [currentUser];
+          } else {
+            var checks = document.querySelectorAll('#userCheckList input[type="checkbox"]:checked');
+            data.assignees = Array.from(checks).map(function(c) { return c.value; });
+            if (data.assignees.length === 0) return null;
+          }
+        }
+        if (!data.content) return null;
+        break;
+
+      case 'daily':
+        data.time = collectTimeValue();
+        if (data.time === null) return null;
+        data.content = document.getElementById('inputContent').value;
+        data.note = document.getElementById('inputNote').value;
+        data.date = document.getElementById('inputStartDate').value;
+        data.end_date = document.getElementById('inputEndDate').value;
+        if (!data.content || !data.content.trim() || !data.date) return null;
+        break;
+
+      case 'meeting':
+        data.time = collectTimeValue();
+        if (data.time === null) return null;
+        data.name = document.getElementById('inputName').value;
+        if (!data.name || !data.name.trim()) return null;
+        data.place = document.getElementById('inputPlace').value;
+        break;
+
+      case 'trip':
+        data.staff = document.getElementById('inputStaff').value;
+        if (!data.staff) return null;
+        data.time = collectTlValue();
+        data.purpose = document.getElementById('inputPurpose').value;
+        if (!data.purpose || !data.purpose.trim()) return null;
+        data.location = document.getElementById('inputLocation').value;
+        data.note = document.getElementById('inputNote').value;
+        data.date = document.getElementById('inputStartDate').value;
+        data.end_date = document.getElementById('inputEndDate').value;
+        if (!data.date) return null;
+        break;
+
+      case 'leave':
+        data.staff = document.getElementById('inputStaff').value;
+        if (!data.staff) return null;
+        data.time = collectTlValue();
+        data.type = document.getElementById('inputType').value;
+        data.note = document.getElementById('inputNote').value;
+        break;
+
+      case 'announce':
+        data.priority = document.querySelector('input[name="prio"]:checked').value;
+        data.target = document.getElementById('inputTarget').value;
+        data.content = document.getElementById('inputContent').value;
+        if (!data.content || !data.content.trim()) return null;
+        data.reporter = document.getElementById('inputReporter').value;
+        if (!data.reporter) return null;
+        data.type = document.getElementById('announceType').value;
+        if (!data.type) data.type = '職員';
+        break;
+
+      case 'room':
+        data.room = document.getElementById('inputRoom').value;
+        data.period = document.getElementById('inputPeriod').value;
+        data.content = document.getElementById('inputContent').value;
+        if (!data.content || !data.content.trim()) return null;
+        data.reserver = document.getElementById('inputReserver').value;
+        if (!data.reserver) return null;
+        break;
+
+      case 'report':
+        data.category = document.getElementById('inputReportCat').value;
+        data.reporter = document.getElementById('inputReporter').value;
+        if (!data.reporter) return null;
+        data.content = document.getElementById('inputContent').value;
+        if (!data.content || !data.content.trim()) return null;
+        break;
+    }
+    return data;
+  }
+
+  function submitForm() {
+    var cat = document.getElementById('entryCategory').value;
+    var id = document.getElementById('entryId').value;
+    var btn = document.getElementById('btnSubmit');
+
+    // スケジュール設定は別パス
+    if (cat === 'schedule_settings') {
+      var type = document.getElementById('inputScheduleType').value;
+      var main = document.getElementById('inputMainEvent').value;
+      var clean = document.getElementById('inputCleaning').value;
+      var date = formatDateStr(currentDate);
+      if (btn) btn.disabled = true;
+      showLoading(true);
+      google.script.run
+        .withSuccessHandler(function() { if (modal) modal.hide(); if (btn) btn.disabled = false; clearCache(); loadData(); showToast('設定を保存しました', 'success'); })
+        .withFailureHandler(function(e) { if (btn) btn.disabled = false; onFailure(e); })
+        .saveScheduleInfo(date, type, main, clean);
+      return;
+    }
+
+    var data = collectFormData(cat, id);
+    if (!data) {
+      if (cat === 'task') {
+        if (!currentUser && !id) return showToast('ユーザー情報が取得できません。ページを更新してください', 'error');
+        var checks = document.querySelectorAll('#userCheckList input[type="checkbox"]:checked');
+        if (checks && checks.length === 0 && !id) return showToast('対象者が選択されていません', 'error');
+        return showToast('内容を入力してください', 'error');
+      }
+      if (cat === 'daily') return showToast('内容と開始日を入力してください', 'error');
+      if (cat === 'trip') return showToast('職員と用務を入力してください', 'error');
+      if (cat === 'leave') return showToast('職員を選択してください', 'error');
+      if (cat === 'meeting') return showToast('会議名を入力してください', 'error');
+      if (cat === 'announce') return showToast('内容と報告者を入力してください', 'error');
+      if (cat === 'room') return showToast('内容と予約者を入力してください', 'error');
+      if (cat === 'report') return showToast('報告者と内容を入力してください', 'error');
+      return showToast('必須項目を入力してください', 'error');
+    }
+
+    if (btn) btn.disabled = true;
+    showLoading(true);
+    google.script.run
+      .withSuccessHandler(function() {
+        if (modal) modal.hide();
+        if (btn) btn.disabled = false;
+        clearCache();
+        loadData();
+        showToast('保存しました', 'success');
+      })
+      .withFailureHandler(function(e) {
+        if (btn) btn.disabled = false;
+        onFailure(e);
+      })
+      .saveData(cat, data);
+  }
+
+  // =============================================================================
+  // タスクフィルタリングUI
+  // =============================================================================
+
+  function updateTaskUserList() {
+    var type = document.getElementById('filterType').value;
+    var subContainer = document.getElementById('subFilterContainer');
+
+    subContainer.style.display = 'none';
+
+    if (type === 'all') {
+      renderCheckList(staffList);
+      return;
+    }
+
+    subContainer.style.display = 'block';
+
+    var values = [];
+    if (type === 'dept') {
+      var allDepts = staffList.reduce(function(acc, s) { return acc.concat(s.depts); }, []);
+      values = allDepts.filter(function(v, i, arr) { return v && arr.indexOf(v) === i; }).sort();
+    } else {
+      values = staffList.map(function(s) { return s[type]; }).filter(function(v, i, arr) { return v && arr.indexOf(v) === i; }).sort();
+    }
+
+    document.getElementById('subFilterSelect').innerHTML =
+      '<option value="">選択してください</option>' + values.map(function(v) { return '<option value="' + v + '">' + v + '</option>'; }).join('');
+    document.getElementById('userCheckList').innerHTML = '<div class="text-muted text-center">フィルタを選択してください</div>';
+  }
+
+  function applyTaskUserFilter() {
+    var type = document.getElementById('filterType').value;
+    var val = document.getElementById('subFilterSelect').value;
+    if (!val) return;
+
+    var filtered = type === 'dept'
+      ? staffList.filter(function(s) { return s.depts && s.depts.includes(val); })
+      : staffList.filter(function(s) { return s[type] === val; });
+
+    renderCheckList(filtered);
+  }
+
+  function renderCheckList(list) {
+    var parts = list.map(function(s) {
+      return '<div class="form-check"><input class="form-check-input" type="checkbox" value="' + escapeHtml(s.name) + '" id="chk_' + escapeHtml(String(s.id)) + '">' +
+        '<label class="form-check-label" for="chk_' + escapeHtml(String(s.id)) + '">' + escapeHtml(s.name) + '</label></div>';
+    });
+    document.getElementById('userCheckList').innerHTML = parts.join('');
+  }
+
+  function toggleAllTaskUsers(b) {
+    document.querySelectorAll('#userCheckList input[type="checkbox"]').forEach(function(c) { c.checked = b; });
+  }
+
+  // =============================================================================
+  // 学校日誌担当者モード
+  // =============================================================================
+
+  var diaryVisible = false;
+
+  function toggleDiaryView() {
+    diaryVisible = !diaryVisible;
+    var mainEl = document.querySelector('main');
+    var diaryEl = document.getElementById('diaryView');
+    var btn = document.getElementById('btnDiary');
+
+    if (diaryVisible) {
+      mainEl.style.display = 'none';
+      diaryEl.style.display = 'block';
+      btn.classList.remove('btn-outline-dark');
+      btn.classList.add('btn-dark');
+      renderDiary();
+    } else {
+      mainEl.style.display = 'block';
+      diaryEl.style.display = 'none';
+      btn.classList.remove('btn-dark');
+      btn.classList.add('btn-outline-dark');
+    }
+  }
+
+  // テキストを半角換算maxLen幅で分割（全角=2, 半角=1）
+  function splitLines(text, maxHalfWidth) {
+    if (!text) return [];
+    var lines = [];
+    var line = '';
+    var width = 0;
+    for (var i = 0; i < text.length; i++) {
+      var ch = text.charCodeAt(i);
+      // 半角: ASCII + 半角カナ(0xFF61-0xFF9F)
+      var cw = (ch <= 0x7E || (ch >= 0xFF61 && ch <= 0xFF9F)) ? 1 : 2;
+      if (width + cw > maxHalfWidth && line) {
+        lines.push(line);
+        line = '';
+        width = 0;
+      }
+      line += text[i];
+      width += cw;
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  function renderDiary() {
+    if (!currentData || !currentData.today) return;
+
+    var t = currentData.today;
+    var day = CONFIG.DAYS_OF_WEEK[currentDate.getDay()];
+    document.getElementById('diaryDate').textContent =
+      currentDate.getFullYear() + '/' + (currentDate.getMonth() + 1) + '/' + currentDate.getDate() + ' (' + day + ')';
+
+    // === テーブル1: 行事・連絡事項 ===
+    var events = [];
+
+    // 校時・清掃・メインイベント（設定されている場合のみ表示）
+    if (t.main_event) {
+      var info = [];
+      if (t.main_event.content) info.push('【' + t.main_event.content + '】');
+      if (t.main_event.scheduleType && t.main_event.scheduleType !== '通常校時') info.push('《' + t.main_event.scheduleType + '》');
+      if (t.main_event.cleaningStatus && t.main_event.cleaningStatus !== '通常清掃') info.push('《' + t.main_event.cleaningStatus + '》');
+      if (info.length > 0) events.push(info.join(' '));
+    }
+
+    // 個別行事
+    t.daily.forEach(function(d) {
+      events.push((d.time ? d.time + ' ' : '') + d.content + (d.note ? '（' + d.note + '）' : ''));
+    });
+
+    // 会議
+    if (t.meetings && t.meetings.length > 0) {
+      t.meetings.forEach(function(m) {
+        events.push((m.time ? m.time + ' ' : '') + m.name + '（' + m.place + '）' + (m.is_fixed ? ' [定例]' : ''));
+      });
+    }
+
+    var announces = [];
+    t.announcements_staff.forEach(function(a) {
+      announces.push((a.priority === '◎' ? '【重要】' : '') + a.content);
+    });
+    t.announcements_student.forEach(function(a) {
+      announces.push('[生徒] ' + (a.priority === '◎' ? '【重要】' : '') + a.content);
+    });
+
+    // 32文字で分割→フラット化（各テキストが複数行になる）
+    var eventRows = [];
+    events.forEach(function(e) {
+      splitLines(e, 32).forEach(function(line) { eventRows.push(line); });
+    });
+
+    var announceRows = [];
+    announces.forEach(function(a) {
+      splitLines(a, 32).forEach(function(line) { announceRows.push(line); });
+    });
+
+    var maxRows1 = Math.max(eventRows.length, announceRows.length, 1);
+    var html1 = '';
+    if (eventRows.length === 0 && announceRows.length === 0) {
+      html1 = '<tr><td class="diary-cell-empty">なし</td><td class="diary-cell-empty">なし</td></tr>';
+    } else {
+      for (var i = 0; i < maxRows1; i++) {
+        html1 += '<tr>' +
+          '<td>' + escapeHtml(eventRows[i] || '') + '</td>' +
+          '<td>' + escapeHtml(announceRows[i] || '') + '</td>' +
+          '</tr>';
+      }
+    }
+    document.getElementById('diaryTable1').innerHTML = html1;
+
+    // === テーブル2: 出張 ===
+    var html2 = '';
+    if (t.trips.length === 0) {
+      html2 = '<tr><td colspan="4" class="diary-cell-empty">なし</td></tr>';
+    } else {
+      t.trips.forEach(function(tr) {
+        html2 += '<tr>' +
+          '<td>出張</td>' +
+          '<td>' + escapeHtml(tr.staff_name) + '</td>' +
+          '<td>' + escapeHtml(tr.time) + '</td>' +
+          '<td>' + escapeHtml(tr.purpose + (tr.location ? '（' + tr.location + '）' : '')) + '</td>' +
+          '</tr>';
+      });
+    }
+    document.getElementById('diaryTable2').innerHTML = html2;
+
+    // === テーブル3: 休暇等 ===
+    var html3 = '';
+    if (t.leaves.length === 0) {
+      html3 = '<tr><td colspan="4" class="diary-cell-empty">なし</td></tr>';
+    } else {
+      t.leaves.forEach(function(l) {
+        html3 += '<tr>' +
+          '<td>' + escapeHtml(l.type) + '</td>' +
+          '<td>' + escapeHtml(l.staff_name) + '</td>' +
+          '<td>' + escapeHtml(l.time) + '</td>' +
+          '<td>' + escapeHtml(l.note || '') + '</td>' +
+          '</tr>';
+      });
+    }
+    document.getElementById('diaryTable3').innerHTML = html3;
+
+    // === テーブル4: 報告 ===
+    var reports = t.reports || [];
+    var html4 = '';
+    if (reports.length === 0) {
+      html4 = '<tr><td colspan="3" class="diary-cell-empty">なし</td></tr>';
+    } else {
+      reports.forEach(function(r) {
+        html4 += '<tr>' +
+          '<td>' + escapeHtml(r.category) + '</td>' +
+          '<td>' + escapeHtml(r.reporter) + '</td>' +
+          '<td>' + escapeHtml(r.content) + '</td>' +
+          '</tr>';
+      });
+    }
+    document.getElementById('diaryTable4').innerHTML = html4;
+  }
+
+  function animateCopyBtn(btn, success) {
+    if (!btn) return;
+    btn.classList.add(success ? 'copied' : 'copy-fail');
+    setTimeout(function() {
+      btn.classList.remove('copied', 'copy-fail');
+    }, 2000);
+  }
+
+  function clipboardWrite(text, btn) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function() {
+        animateCopyBtn(btn, true);
+      }).catch(function() {
+        fallbackCopyWithBtn(text, btn);
+      });
+    } else {
+      fallbackCopyWithBtn(text, btn);
+    }
+  }
+
+  function fallbackCopyWithBtn(text, btn) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      animateCopyBtn(btn, true);
+    } catch (e) {
+      animateCopyBtn(btn, false);
+      showToast('コピーに失敗しました', 'error');
+    }
+    document.body.removeChild(ta);
+  }
+
+  function copyDiaryTable(tableId, btn) {
+    var table = document.getElementById(tableId);
+    if (!table) return;
+
+    var rows = table.querySelectorAll('tbody tr');
+    var lines = [];
+    rows.forEach(function(row) {
+      var cells = row.querySelectorAll('td');
+      var cols = [];
+      cells.forEach(function(cell) {
+        var text = cell.textContent.replace(/\n/g, ' ').replace(/\t/g, ' ').trim();
+        cols.push(text);
+      });
+      if (cols.length > 0) lines.push(cols.join('\t'));
+    });
+
+    clipboardWrite(lines.join('\n'), btn);
+  }
+
+  function printDiary() {
+    renderDiary();
+    // 印刷時にメインビューを確実に非表示
+    var mainEl = document.querySelector('main');
+    if (mainEl) mainEl.style.display = 'none';
+    setTimeout(function() {
+      window.print();
+      // 印刷後に日誌モード維持
+      if (!diaryVisible && mainEl) mainEl.style.display = 'block';
+    }, 200);
+  }
+
+  // =============================================================================
+  // スワイプナビゲーション（iPad/モバイル対応）
+  // =============================================================================
+
+  (function() {
+    var touchStartX = 0;
+    var touchStartY = 0;
+    var MIN_SWIPE = 80;
+
+    document.addEventListener('touchstart', function(e) {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+
+    document.addEventListener('touchend', function(e) {
+      // 日誌ビュー中はスワイプ無効（ドラッグ選択と競合防止）
+      if (diaryVisible) return;
+      var dx = e.changedTouches[0].clientX - touchStartX;
+      var dy = e.changedTouches[0].clientY - touchStartY;
+      // 水平方向のスワイプのみ（垂直スクロールと区別）
+      if (Math.abs(dx) > MIN_SWIPE && Math.abs(dx) > Math.abs(dy) * 2) {
+        if (dx > 0) changeDate(-1); // 右スワイプ = 前日
+        else changeDate(1);         // 左スワイプ = 翌日
+      }
+    }, { passive: true });
+  })();
+
+  // =============================================================================
+  // スケジュールコピー（朝礼用テキスト生成）
+  // =============================================================================
+
+  function copySchedule(btn) {
+    if (!currentData || !currentData.today) {
+      showToast('データがありません', 'error');
+      return;
+    }
+
+    var t = currentData.today;
+    var day = CONFIG.DAYS_OF_WEEK[currentDate.getDay()];
+    var lines = [];
+
+    lines.push('【' + currentDate.getFullYear() + '/' + (currentDate.getMonth() + 1) + '/' + currentDate.getDate() + ' (' + day + ') 朝礼伝達】');
+    lines.push('');
+
+    // 校時・清掃
+    if (t.main_event) {
+      var info = [];
+      if (t.main_event.content) info.push(t.main_event.content);
+      info.push(t.main_event.scheduleType);
+      info.push(t.main_event.cleaningStatus);
+      lines.push('■ ' + info.join(' / '));
+      lines.push('');
+    }
+
+    // 行事
+    if (t.daily.length > 0) {
+      lines.push('【行事】');
+      t.daily.forEach(function(d) {
+        lines.push('  ' + (d.time ? d.time + ' ' : '') + d.content + (d.note ? ' (' + d.note + ')' : ''));
+      });
+      lines.push('');
+    }
+
+    // 会議
+    if (t.meetings.length > 0) {
+      lines.push('【会議】');
+      t.meetings.forEach(function(m) {
+        lines.push('  ' + m.name + ' ' + m.time + ' ' + m.place + (m.is_fixed ? ' (定例)' : ''));
+      });
+      lines.push('');
+    }
+
+    // 伝達(職員)
+    if (t.announcements_staff.length > 0) {
+      lines.push('【伝達事項（職員）】');
+      t.announcements_staff.forEach(function(a) {
+        lines.push('  ' + (a.priority === '◎' ? '【重要】' : '') + a.content + ' (' + a.reporter + ')');
+      });
+      lines.push('');
+    }
+
+    // 伝達(生徒)
+    if (t.announcements_student.length > 0) {
+      lines.push('【伝達事項（生徒）】');
+      t.announcements_student.forEach(function(a) {
+        lines.push('  ' + (a.priority === '◎' ? '【重要】' : '') + a.content + ' (' + a.reporter + ')');
+      });
+      lines.push('');
+    }
+
+    // 出張
+    if (t.trips.length > 0) {
+      lines.push('【出張】 ' + t.trips.length + '名');
+      t.trips.forEach(function(tr) {
+        lines.push('  ' + tr.staff_name + ' ' + tr.location + ' (' + tr.purpose + ')');
+      });
+      lines.push('');
+    }
+
+    // 休暇
+    if (t.leaves.length > 0) {
+      lines.push('【休暇】 ' + t.leaves.length + '名');
+      t.leaves.forEach(function(l) {
+        lines.push('  ' + l.staff_name + ' ' + l.type + ' ' + l.time);
+      });
+      lines.push('');
+    }
+
+    // 報告
+    var reports = t.reports || [];
+    if (reports.length > 0) {
+      lines.push('【報告】');
+      reports.forEach(function(r) {
+        lines.push('  [' + r.category + '] ' + r.content + ' (' + r.reporter + ')');
+      });
+    }
+
+    clipboardWrite(lines.join('\n'), btn);
+  }
+</script>
