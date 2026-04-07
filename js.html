@@ -128,7 +128,34 @@
     });
 
     setToday();
+
+    // 同時編集検知: 90秒ごとにバージョンチェック（軽量API、シートアクセスなし）
+    setInterval(pollDataVersion, 90000);
   };
+
+  var _lastKnownVersion = -1;
+
+  function pollDataVersion() {
+    // モーダル表示中・非アクティブタブではスキップ
+    if (document.hidden) return;
+    if (document.querySelector('.modal.show')) return;
+
+    google.script.run
+      .withSuccessHandler(function(version) {
+        if (_lastKnownVersion === -1) {
+          _lastKnownVersion = version;
+          return;
+        }
+        if (version > _lastKnownVersion) {
+          _lastKnownVersion = version;
+          // 他ユーザーがデータを変更 → バックグラウンドリフレッシュ
+          clearCache();
+          loadData();
+          showToast('他のユーザーがデータを更新しました', 'info');
+        }
+      })
+      .getDataVersion();
+  }
 
   // =============================================================================
   // データ操作
@@ -677,13 +704,13 @@
     if (modal) modal.hide();
     showLoading(true);
     var affectedDate = formatDateStr(currentDate);
-    google.script.run.withSuccessHandler(function() { invalidateCache(affectedDate); loadData(); showToast('削除しました', 'success'); }).withFailureHandler(onFailure).deleteEvent(id, cat);
+    google.script.run.withSuccessHandler(function() { _lastKnownVersion++; invalidateCache(affectedDate); loadData(); showToast('削除しました', 'success'); }).withFailureHandler(onFailure).deleteEvent(id, cat);
   }
 
   function moveItem(cat, id, dir) {
     var date = formatDateStr(currentDate);
     showLoading(true);
-    google.script.run.withSuccessHandler(function() { invalidateCache(date); loadData(); showToast('順序を変更しました', 'success'); }).withFailureHandler(onFailure).moveItem(cat, id, dir, date);
+    google.script.run.withSuccessHandler(function() { _lastKnownVersion++; invalidateCache(date); loadData(); showToast('順序を変更しました', 'success'); }).withFailureHandler(onFailure).moveItem(cat, id, dir, date);
   }
 
   // =============================================================================
@@ -1215,7 +1242,7 @@
       if (btn) btn.disabled = true;
       showLoading(true);
       google.script.run
-        .withSuccessHandler(function() { if (modal) modal.hide(); if (btn) btn.disabled = false; invalidateCache(date); loadData(); showToast('設定を保存しました', 'success'); })
+        .withSuccessHandler(function() { if (modal) modal.hide(); if (btn) btn.disabled = false; _lastKnownVersion++; invalidateCache(date); loadData(); showToast('設定を保存しました', 'success'); })
         .withFailureHandler(function(e) { if (btn) btn.disabled = false; onFailure(e); })
         .saveScheduleInfo(date, type, main, clean);
       return;
@@ -1242,12 +1269,15 @@
     if (btn) btn.disabled = true;
     showLoading(true);
     google.script.run
-      .withSuccessHandler(function() {
+      .withSuccessHandler(function(result) {
         if (modal) modal.hide();
         if (btn) btn.disabled = false;
+        _lastKnownVersion++; // 自分の変更でバージョンポーリングが反応しないようにする
         invalidateCache(formatDateStr(currentDate));
         loadData();
-        showToast('保存しました', 'success');
+        // 教室予約の上書き通知を表示
+        var msg = (result && result.message) ? result.message : '保存しました';
+        showToast(msg, 'success');
       })
       .withFailureHandler(function(e) {
         if (btn) btn.disabled = false;

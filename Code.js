@@ -121,6 +121,7 @@ function clearDataCache(affectedDate) {
       }
     }
     if (keys.length > 0) cache.removeAll(keys);
+    bumpDataVersion(); // 他クライアントに変更を通知
   } catch (e) {
     console.warn('Cache clear failed', e);
   }
@@ -563,18 +564,20 @@ const ORDER_COL_INDEX = { daily: 6, announce: 7 };
 
 function saveData(category, data) {
   try {
+    // --- バリデーション・準備（ロック外で実行 → ロック保持時間を短縮）---
     if (!isValidCategory(category)) throw new Error('無効なカテゴリ: ' + category);
     if (category !== 'task' && !isValidDate(data.date)) throw new Error(ERROR_MESSAGES.INVALID_DATE);
 
+    var isUpdate = !!data.id;
+    var id = isUpdate ? data.id : Utilities.getUuid();
+    var sheetName = CATEGORY_SHEET_MAP[category];
+    var rowData = ROW_BUILDERS[category](data);
+    var ss = getSS();
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) throw new Error(ERROR_MESSAGES.SHEET_NOT_FOUND + ': ' + sheetName);
+
+    // --- ここからロック内（書込みのみ）---
     return withLock(function() {
-      var isUpdate = !!data.id;
-      var id = isUpdate ? data.id : Utilities.getUuid();
-      var sheetName = CATEGORY_SHEET_MAP[category];
-      var rowData = ROW_BUILDERS[category](data);
-
-      var sheet = getSS().getSheetByName(sheetName);
-      if (!sheet) throw new Error(ERROR_MESSAGES.SHEET_NOT_FOUND + ': ' + sheetName);
-
       if (isUpdate) {
         return updateRow(sheet, id, rowData, category);
       }
@@ -583,16 +586,22 @@ function saveData(category, data) {
         return bulkAddTasks(sheet, data);
       }
 
-      // 教室予約: 同じ日付+教室+時限の既存エントリがあれば更新
+      // 教室予約: 同じ日付+教室+時限の既存エントリがあれば更新（競合検知付き）
       if (category === 'room') {
         var existing = sheet.getDataRange().getValues();
         for (var ri = 1; ri < existing.length; ri++) {
           if (formatDate(existing[ri][1]) === data.date &&
               existing[ri][2] === data.period &&
               existing[ri][3] === data.room) {
+            // 他ユーザーが既に予約変更していた場合、上書き通知
+            var prevContent = existing[ri][4] || '';
+            var prevReserver = existing[ri][5] || '';
             sheet.getRange(ri + 1, 2, 1, rowData.length).setValues([rowData]);
             clearDataCache(data.date);
-            return { success: true, message: '教室予約を更新しました', id: existing[ri][0] };
+            var msg = (prevContent && prevReserver !== (data.reserver || ''))
+              ? '教室予約を更新しました（' + prevReserver + 'の「' + prevContent + '」を上書き）'
+              : '教室予約を更新しました';
+            return { success: true, message: msg, id: existing[ri][0] };
           }
         }
       }
@@ -809,6 +818,27 @@ function saveScheduleInfo(dateStr, scheduleType, mainEventContent, cleaningStatu
   ]);
   clearDataCache(dateStr);
   }); // withLock
+}
+
+// =============================================================================
+// データバージョン管理（同時編集検知）
+// =============================================================================
+
+// 全書込み操作で呼ばれ、バージョンをインクリメント
+// クライアントはポーリングでバージョン変化を検知→自動リロード
+function bumpDataVersion() {
+  try {
+    var cache = CacheService.getScriptCache();
+    var current = parseInt(cache.get('data_version') || '0');
+    cache.put('data_version', String(current + 1), 21600); // 6時間TTL
+  } catch (e) { /* ignore */ }
+}
+
+// クライアントが定期的に呼ぶ軽量API（シートアクセスなし）
+function getDataVersion() {
+  try {
+    return parseInt(CacheService.getScriptCache().get('data_version') || '0');
+  } catch (e) { return 0; }
 }
 
 // =============================================================================
