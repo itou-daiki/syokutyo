@@ -1,7 +1,7 @@
 <script>
   /**
-   * 職員朝礼伝達システム - Frontend Logic (v12.0)
-   * XSS-safe, Toast notifications, Accessible
+   * 職員朝礼伝達システム - Frontend Logic (v13.0)
+   * XSS-safe, Toast notifications, Accessible, Performance-optimized
    */
 
   // =============================================================================
@@ -113,13 +113,17 @@
       }
     }
 
-    // バックグラウンド復帰時にデータ自動更新（iPad対策、60秒クールダウン）
+    // バックグラウンド復帰時にデータ自動更新（40人同時復帰対策: ジッター付き）
     var lastVisibilityLoad = 0;
     document.addEventListener('visibilitychange', function() {
       if (!document.hidden && (Date.now() - lastVisibilityLoad > 60000)) {
         lastVisibilityLoad = Date.now();
-        clearCache();
-        loadData();
+        // 0〜5秒のランダム遅延で雷群問題（thundering herd）を回避
+        var jitter = Math.random() * 5000;
+        setTimeout(function() {
+          clearCache();
+          loadData();
+        }, jitter);
       }
     });
 
@@ -131,21 +135,26 @@
   // =============================================================================
 
   var _loadRequestId = 0; // レースコンディション対策
+  var _cacheTimestamps = {}; // キャッシュ作成時刻
+  var STALE_THRESHOLD = 4 * 60 * 1000; // 4分でstale判定（サーバーTTLは5分）
 
   function loadData(forceReload) {
-    showLoading(true);
-
     var requestedDate = formatDateStr(currentDate);
+    var cached = dateCache[requestedDate];
+    var cacheAge = _cacheTimestamps[requestedDate] ? Date.now() - _cacheTimestamps[requestedDate] : Infinity;
 
-    // 日付別キャッシュチェック
-    if (!forceReload && dateCache[requestedDate]) {
-      try {
-        renderData(dateCache[requestedDate]);
-      } catch (e) {
-        console.error('renderData error:', e);
+    // Stale-while-revalidate: キャッシュがあれば即座に表示
+    if (!forceReload && cached) {
+      try { renderData(cached); } catch (e) { console.error('renderData error:', e); }
+
+      // キャッシュが新鮮ならサーバーリクエスト不要
+      if (cacheAge < STALE_THRESHOLD) {
+        showLoading(false);
+        return;
       }
-      showLoading(false);
-      return;
+      // Stale: バックグラウンドでリフレッシュ（ローディング表示なし）
+    } else {
+      showLoading(true);
     }
 
     // リクエストIDで最新リクエストのみ採用
@@ -165,12 +174,14 @@
     try {
       var data = JSON.parse(json);
 
-      // リクエスト時の日付でキャッシュ保存（currentDateではなくrequestDate）
+      // リクエスト時の日付でキャッシュ保存（タイムスタンプ付き）
       dateCache[requestDate] = data;
+      _cacheTimestamps[requestDate] = Date.now();
 
       // キャッシュサイズ制限（最大15日分）
       var keys = Object.keys(dateCache);
       if (keys.length > 15) {
+        delete _cacheTimestamps[keys[0]];
         delete dateCache[keys[0]];
       }
 
@@ -207,14 +218,45 @@
     renderReportList(data.today.reports || []);
     renderRoomMatrix(data.today.reservations);
 
-    setTimeout(loadWeather, 100);
+    loadWeather();
+
+    // 明日のデータもクライアントキャッシュに保存（プリフェッチ）
+    var tmrStr = formatDateStr(tmr);
+    if (!dateCache[tmrStr] && data.tomorrow) {
+      // 明日用の簡易キャッシュエントリ（staffとtasksは共通）
+      dateCache[tmrStr] = {
+        staff: data.staff,
+        today: data.tomorrow,
+        tomorrow: { daily: [], trips: [], leaves: [], meetings: [],
+          announcements_staff: [], announcements_student: [], reports: [],
+          reservations: [], main_event: { content: '', scheduleType: '通常校時', cleaningStatus: '通常清掃' },
+          counts: { trip: 0, leave: 0, meeting: 0 } },
+        tasks: data.tasks,
+        currentUser: data.currentUser
+      };
+    }
 
     // 日誌ビューが表示中なら更新
     if (diaryVisible) renderDiary();
   }
 
+  // スマートキャッシュ無効化: 影響日のみ削除（全クリアではない）
+  function invalidateCache(affectedDate) {
+    if (!affectedDate) { dateCache = {}; _cacheTimestamps = {}; return; }
+    // 影響日とその前後1日を無効化
+    var d = new Date(affectedDate + 'T00:00:00');
+    for (var i = -1; i <= 1; i++) {
+      var dd = new Date(d);
+      dd.setDate(dd.getDate() + i);
+      var key = formatDateStr(dd);
+      delete dateCache[key];
+      delete _cacheTimestamps[key];
+    }
+  }
+
   function clearCache() {
     dateCache = {};
+    _cacheTimestamps = {};
   }
 
   function onFailure(e) {
@@ -232,11 +274,27 @@
     loadData();
   }
 
+  // デバウンス付き日付変更（連続クリック/スワイプ対策）
+  var _changeDateTimer = null;
   function changeDate(d) {
     currentDate.setDate(currentDate.getDate() + d);
     updateDatePicker();
-    loadData();
+    if (_changeDateTimer) clearTimeout(_changeDateTimer);
+    _changeDateTimer = setTimeout(function() { _changeDateTimer = null; loadData(); }, 150);
   }
+
+  // キーボードショートカット（←→で日付移動、Tで今日）
+  document.addEventListener('keydown', function(e) {
+    // input/textarea/select内ではショートカット無効
+    var tag = e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    // モーダル表示中は無効
+    if (document.querySelector('.modal.show')) return;
+
+    if (e.key === 'ArrowLeft') { e.preventDefault(); changeDate(-1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); changeDate(1); }
+    else if (e.key === 't' || e.key === 'T') { e.preventDefault(); setToday(); }
+  });
 
   function updateDatePicker() {
     if (fp) {
@@ -514,12 +572,22 @@
     headParts.push('</tr>');
     thead.innerHTML = headParts.join('');
 
+    // O(1)ルックアップマップ構築（旧: O(rooms×periods×reservations)のネストfind）
+    var normalMap = {};
+    var fixedMap = {};
+    reservations.forEach(function(r) {
+      var mapKey = r.room + '|' + r.period;
+      if (r.is_fixed) { if (!normalMap[mapKey]) fixedMap[mapKey] = r; }
+      else normalMap[mapKey] = r;
+    });
+
     var bodyParts = [];
     CONFIG.ROOMS.forEach(function(room) {
       bodyParts.push('<tr><th>' + room + '</th>');
       CONFIG.PERIODS.forEach(function(period) {
-        var nr = reservations.find(function(r) { return r.room === room && r.period === period && !r.is_fixed; });
-        var fr = reservations.find(function(r) { return r.room === room && r.period === period && r.is_fixed; });
+        var mapKey = room + '|' + period;
+        var nr = normalMap[mapKey];
+        var fr = fixedMap[mapKey];
 
         if (nr) {
           var key = storeItem(nr);
@@ -580,28 +648,42 @@
     toggleTask(id, (currentStatus + 1) % 3);
   }
 
-  function toggleTask(id, checked) {
-    showLoading(true);
+  function toggleTask(id, newStatus) {
+    // オプティミスティックUI: サーバー応答前にUIを即座更新
+    if (currentData && currentData.tasks) {
+      currentData.tasks.forEach(function(t) {
+        if (String(t.id) === String(id)) t.check = newStatus;
+      });
+      renderTaskList(currentData.tasks);
+      // ローカルキャッシュも更新（再描画時に正しい状態を維持）
+      var cachedDate = formatDateStr(currentDate);
+      if (dateCache[cachedDate]) dateCache[cachedDate].tasks = currentData.tasks;
+    }
+
     google.script.run.withSuccessHandler(function() {
       _taskToggling = false;
-      clearCache(); loadData(); showToast('ステータスを更新しました', 'success');
+      // サーバー成功 → フルリロード不要（オプティミスティックUI済み）
+      showToast('ステータスを更新しました', 'success');
     }).withFailureHandler(function(e) {
       _taskToggling = false;
+      // 失敗時: キャッシュクリアして正しいデータを再取得
+      clearCache(); loadData();
       onFailure(e);
-    }).toggleTaskCheck(id, checked);
+    }).toggleTaskCheck(id, newStatus);
   }
 
   function deleteItem(id, cat, name) {
     if (!confirm('「' + name + '」を削除しますか？')) return;
     if (modal) modal.hide();
     showLoading(true);
-    google.script.run.withSuccessHandler(function() { clearCache(); loadData(); showToast('削除しました', 'success'); }).withFailureHandler(onFailure).deleteEvent(id, cat);
+    var affectedDate = formatDateStr(currentDate);
+    google.script.run.withSuccessHandler(function() { invalidateCache(affectedDate); loadData(); showToast('削除しました', 'success'); }).withFailureHandler(onFailure).deleteEvent(id, cat);
   }
 
   function moveItem(cat, id, dir) {
     var date = formatDateStr(currentDate);
     showLoading(true);
-    google.script.run.withSuccessHandler(function() { clearCache(); loadData(); showToast('順序を変更しました', 'success'); }).withFailureHandler(onFailure).moveItem(cat, id, dir, date);
+    google.script.run.withSuccessHandler(function() { invalidateCache(date); loadData(); showToast('順序を変更しました', 'success'); }).withFailureHandler(onFailure).moveItem(cat, id, dir, date);
   }
 
   // =============================================================================
@@ -1133,7 +1215,7 @@
       if (btn) btn.disabled = true;
       showLoading(true);
       google.script.run
-        .withSuccessHandler(function() { if (modal) modal.hide(); if (btn) btn.disabled = false; clearCache(); loadData(); showToast('設定を保存しました', 'success'); })
+        .withSuccessHandler(function() { if (modal) modal.hide(); if (btn) btn.disabled = false; invalidateCache(date); loadData(); showToast('設定を保存しました', 'success'); })
         .withFailureHandler(function(e) { if (btn) btn.disabled = false; onFailure(e); })
         .saveScheduleInfo(date, type, main, clean);
       return;
@@ -1163,7 +1245,7 @@
       .withSuccessHandler(function() {
         if (modal) modal.hide();
         if (btn) btn.disabled = false;
-        clearCache();
+        invalidateCache(formatDateStr(currentDate));
         loadData();
         showToast('保存しました', 'success');
       })

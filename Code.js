@@ -1,8 +1,8 @@
 /**
- * 職員朝礼伝達システム - Backend Logic (v10.0)
+ * 職員朝礼伝達システム - Backend Logic (v13.0)
  *
  * @description 教員朝礼で使用する伝達事項・予定管理システム
- * @version 10.0 - Performance & Refactoring
+ * @version 13.0 - Performance & Feature Improvements
  */
 
 // =============================================================================
@@ -53,13 +53,22 @@ const DATE_FILTERED_SHEETS = [
 // 固定データシート
 const STATIC_SHEETS = [SHEETS.FIXED_MEETING, SHEETS.FIXED_CLASS, SHEETS.STAFF, SHEETS.TASK];
 
+// 静的データのキャッシュTTL（30分 - 職員情報・定例会議・固定教室は変更頻度が低い）
+const STATIC_CACHE_TTL = 1800;
+// 動的データのキャッシュTTL（5分）
+const DYNAMIC_CACHE_TTL = 300;
+
 // =============================================================================
 // ユーティリティ関数
 // =============================================================================
 
+// リクエスト内でSpreadsheet参照をキャッシュ（同一実行内で複数回openByIdを防止）
+var _ssCache = null;
 function getSS() {
+  if (_ssCache) return _ssCache;
   try {
-    return SpreadsheetApp.openById(SPREADSHEET_ID);
+    _ssCache = SpreadsheetApp.openById(SPREADSHEET_ID);
+    return _ssCache;
   } catch (e) {
     logError('getSS', e);
     throw new Error('スプレッドシートを開けませんでした');
@@ -85,31 +94,43 @@ function logError(fn, e) {
 
 
 
+// ターゲット指定キャッシュ無効化（全キャッシュクリアではなく影響範囲のみ）
 function clearDataCache(affectedDate) {
   try {
     var cache = CacheService.getScriptCache();
-    var today = new Date();
+    var tz = Session.getScriptTimeZone();
     var keys = [];
-    for (var i = -7; i <= 7; i++) {
-      var d = new Date(today);
-      d.setDate(d.getDate() + i);
-      keys.push('data_' + Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd'));
-    }
-    // 影響を受けた日付とその前後もクリア
+
     if (affectedDate) {
+      // 影響日とその前後1日のみクリア（複数日イベント対応）
       var af = new Date(affectedDate.replace(/-/g, '/'));
       if (!isNaN(af.getTime())) {
         for (var j = -1; j <= 1; j++) {
           var ad = new Date(af);
           ad.setDate(ad.getDate() + j);
-          keys.push('data_' + Utilities.formatDate(ad, Session.getScriptTimeZone(), 'yyyy-MM-dd'));
+          keys.push('data_' + Utilities.formatDate(ad, tz, 'yyyy-MM-dd'));
         }
       }
+    } else {
+      // affectedDate未指定時は今日前後3日のみ（旧: ±7日全削除）
+      var today = new Date();
+      for (var i = -3; i <= 3; i++) {
+        var d = new Date(today);
+        d.setDate(d.getDate() + i);
+        keys.push('data_' + Utilities.formatDate(d, tz, 'yyyy-MM-dd'));
+      }
     }
-    cache.removeAll(keys);
+    if (keys.length > 0) cache.removeAll(keys);
   } catch (e) {
     console.warn('Cache clear failed', e);
   }
+}
+
+// 静的データキャッシュをクリア（タスク変更時等）
+function clearStaticCache() {
+  try {
+    CacheService.getScriptCache().remove('static_sheets_v2');
+  } catch (e) { /* ignore */ }
 }
 
 // 日付フォーマット（最適化版：不要なtry-catch除去、早期リターン）
@@ -245,6 +266,35 @@ function getData(dateStr) {
   }
 }
 
+// 静的データ（職員情報・定例会議・固定教室）を長TTLで分離キャッシュ
+// 40人が同時アクセスしてもSpreadsheet APIコールを大幅削減
+function getStaticSheetData(ss) {
+  var cache = CacheService.getScriptCache();
+  var cacheKey = 'static_sheets_v2';
+  var cached = cache.get(cacheKey);
+
+  if (cached) {
+    try { return JSON.parse(cached); } catch (e) { /* fall through */ }
+  }
+
+  var staticData = {};
+  STATIC_SHEETS.forEach(function(name) {
+    var sh = ss.getSheetByName(name);
+    if (sh && sh.getLastRow() > 1) {
+      staticData[name] = sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).getValues();
+    } else {
+      staticData[name] = [];
+    }
+  });
+
+  // 静的データは30分キャッシュ（100KB上限チェック）
+  var json = JSON.stringify(staticData);
+  if (json.length < 100000) {
+    cache.put(cacheKey, json, STATIC_CACHE_TTL);
+  }
+  return staticData;
+}
+
 function getAllSheetData(startDate, endDate) {
   var ss = getSS();
   var data = {};
@@ -276,7 +326,6 @@ function getAllSheetData(startDate, endDate) {
           var endDate = new Date(row[endCol]);
           if (!isNaN(endDate.getTime())) {
             var rowEnd = normalizeDate(endDate);
-            // イベント期間[rowStart, rowEnd]と範囲[startTime, endTime]が重なるか
             return rowStart <= endTime && rowEnd >= startTime;
           }
         }
@@ -288,14 +337,10 @@ function getAllSheetData(startDate, endDate) {
     }
   });
 
-  // 固定データシート（フィルタリング不要）
+  // 静的データは分離キャッシュから取得（30分TTL）
+  var staticData = getStaticSheetData(ss);
   STATIC_SHEETS.forEach(function(name) {
-    var sh = ss.getSheetByName(name);
-    if (sh && sh.getLastRow() > 1) {
-      data[name] = sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).getValues();
-    } else {
-      data[name] = [];
-    }
+    data[name] = staticData[name] || [];
   });
 
   return data;
@@ -564,22 +609,24 @@ function saveData(category, data) {
 }
 
 function updateRow(sheet, id, rowData, category) {
-  var values = sheet.getDataRange().getValues();
+  // TextFinderで高速ID検索
+  var finder = sheet.getRange(1, 1, sheet.getLastRow(), 1).createTextFinder(String(id)).matchEntireCell(true);
+  var found = finder.findNext();
 
-  for (var i = 1; i < values.length; i++) {
-    if (String(values[i][0]) === String(id)) {
-      var writeData = rowData.slice();
+  if (found) {
+    var rowNum = found.getRow();
+    var writeData = rowData.slice();
 
-      // display_orderを維持
-      var orderIdx = ORDER_COL_INDEX[category];
-      if (orderIdx !== undefined && values[i].length > orderIdx) {
-        writeData[orderIdx - 1] = values[i][orderIdx];
-      }
-
-      sheet.getRange(i + 1, 2, 1, writeData.length).setValues([writeData]);
-      clearDataCache();
-      return { success: true, message: 'データを更新しました', id: id };
+    // display_orderを維持
+    var orderIdx = ORDER_COL_INDEX[category];
+    if (orderIdx !== undefined) {
+      var existingOrder = sheet.getRange(rowNum, orderIdx + 1).getValue();
+      if (existingOrder !== '') writeData[orderIdx - 1] = existingOrder;
     }
+
+    sheet.getRange(rowNum, 2, 1, writeData.length).setValues([writeData]);
+    clearDataCache();
+    return { success: true, message: 'データを更新しました', id: id };
   }
 
   // IDが見つからない場合は新規追加
@@ -598,6 +645,7 @@ function bulkAddTasks(sheet, data) {
     sheet.getRange(lastRow + 1, 1, rows.length, rows[0].length).setValues(rows);
   }
   clearDataCache();
+  clearStaticCache();
   return { success: true, message: rows.length + '件のタスクを一括登録しました' };
 }
 
@@ -605,23 +653,23 @@ function bulkAddTasks(sheet, data) {
 // タスクステータス切替
 // =============================================================================
 
+// タスクステータス切替: ロック不要（単一セル書込み・ユーザー固有操作）
+// 40人同時利用時のロック競合を回避
 function toggleTaskCheck(id, statusValue) {
   try {
-    return withLock(function() {
-      var sheet = getSS().getSheetByName(SHEETS.TASK);
-      if (!sheet) throw new Error(ERROR_MESSAGES.SHEET_NOT_FOUND);
-      var data = sheet.getDataRange().getValues();
-      for (var i = 1; i < data.length; i++) {
-        if (String(data[i][0]) === String(id)) {
-          var newVal = parseInt(statusValue);
-          if (isNaN(newVal) || newVal < 0 || newVal > 2) newVal = 0;
-          sheet.getRange(i + 1, 6).setValue(newVal);
-          clearDataCache();
-          return { success: true };
-        }
-      }
-      throw new Error('タスクが見つかりません');
-    });
+    var sheet = getSS().getSheetByName(SHEETS.TASK);
+    if (!sheet) throw new Error(ERROR_MESSAGES.SHEET_NOT_FOUND);
+
+    var finder = sheet.getRange(1, 1, sheet.getLastRow(), 1).createTextFinder(String(id)).matchEntireCell(true);
+    var found = finder.findNext();
+    if (!found) throw new Error('タスクが見つかりません');
+
+    var newVal = parseInt(statusValue);
+    if (isNaN(newVal) || newVal < 0 || newVal > 2) newVal = 0;
+    sheet.getRange(found.getRow(), 6).setValue(newVal);
+    clearDataCache();
+    clearStaticCache(); // タスクは静的キャッシュに含まれる
+    return { success: true };
   } catch (e) {
     throw new Error(e.message);
   }
@@ -638,15 +686,16 @@ function deleteEvent(id, category) {
   return withLock(function() {
     var sheet = getSS().getSheetByName(sheetName);
     if (!sheet) return { success: false, message: ERROR_MESSAGES.SHEET_NOT_FOUND };
-    var data = sheet.getDataRange().getValues();
-    for (var i = 1; i < data.length; i++) {
-      if (String(data[i][0]) === String(id)) {
-        sheet.deleteRow(i + 1);
-        clearDataCache();
-        return { success: true, message: '削除しました' };
-      }
-    }
-    return { success: false, message: 'データが見つかりませんでした' };
+
+    // TextFinderで高速ID検索
+    var finder = sheet.getRange(1, 1, sheet.getLastRow(), 1).createTextFinder(String(id)).matchEntireCell(true);
+    var found = finder.findNext();
+    if (!found) return { success: false, message: 'データが見つかりませんでした' };
+
+    sheet.deleteRow(found.getRow());
+    clearDataCache();
+    if (category === 'task') clearStaticCache();
+    return { success: true, message: '削除しました' };
   });
 }
 
