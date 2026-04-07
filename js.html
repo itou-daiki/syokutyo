@@ -367,7 +367,7 @@
   function renderDailyList(items, id) {
     var list = document.getElementById(id);
     if (!items.length) {
-      list.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">予定なし</td></tr>';
+      list.innerHTML = '<tr><td colspan="4" class="empty-state"><i class="bi bi-calendar-x"></i>予定なし</td></tr>';
       return;
     }
 
@@ -400,7 +400,7 @@
   function renderMeetings(items, id) {
     var list = document.getElementById(id);
     if (!items.length) {
-      list.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">予定なし</td></tr>';
+      list.innerHTML = '<tr><td colspan="3" class="empty-state"><i class="bi bi-calendar-x"></i>予定なし</td></tr>';
       return;
     }
 
@@ -442,7 +442,7 @@
 
     var list = document.getElementById(id);
     if (!items.length) {
-      list.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">予定なし</td></tr>';
+      list.innerHTML = '<tr><td colspan="4" class="empty-state"><i class="bi bi-calendar-x"></i>予定なし</td></tr>';
       return;
     }
 
@@ -486,7 +486,7 @@
   function renderAnnouncements(id, items) {
     var list = document.getElementById(id);
     if (!items.length) {
-      list.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">なし</td></tr>';
+      list.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="bi bi-megaphone"></i>なし</td></tr>';
       return;
     }
 
@@ -523,7 +523,7 @@
     if (el) el.textContent = filtered.length + '件' + (currentUser ? ' (' + currentUser + ')' : '');
 
     if (!filtered.length) {
-      list.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">タスクなし</td></tr>';
+      list.innerHTML = '<tr><td colspan="5" class="empty-state"><i class="bi bi-check-circle"></i>タスクなし</td></tr>';
       return;
     }
 
@@ -568,7 +568,7 @@
 
     var list = document.getElementById('reportList');
     if (!items.length) {
-      list.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">報告なし</td></tr>';
+      list.innerHTML = '<tr><td colspan="4" class="empty-state"><i class="bi bi-chat-square-text"></i>報告なし</td></tr>';
       return;
     }
 
